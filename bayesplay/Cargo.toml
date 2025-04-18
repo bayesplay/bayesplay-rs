@@ -4,29 +4,19 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-getrandom = { version = "0.2", features = ["js"] }
-flexbuffers = "2.0.0"
 itertools = "^0.12.1"
-plotters = "0.3.5"
 rand_distr = "0.4.3"
 rand_xoshiro = "0.6.0"
 rayon = "1.9"
 rmath = {version = "0.1.0", path = "../rmath"}
 rmp-serde = "1.1.2"
 serde = {version = "1.0.197", features = ["derive"]}
-serde-pickle = "1.1.1"
-serde_cbor = "0.11.2"
 serde_json = "1.0.114"
 thiserror = "1.0.58"
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
-serde-wasm-bindgen = "0.6.5"
 anyhow = "1.0.81"
 random = "0.14.0"
 rand = "0.8.5"
-web-sys = "0.3.69"
-console_log = "1.0.0"
 log = "0.4.21"
 statrs = "0.16.0"
-rand_chacha = "0.3.1"
 approx = "0.5.1"
 
