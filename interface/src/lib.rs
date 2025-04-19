@@ -192,7 +192,7 @@ pub struct LikelihoodInterface {
     ///
     /// ### Normal distribution (`LikelihoodFamily::Normal`)
     /// - `mean` mean of the normal distribution
-    /// - `sd` standard deviation of the normal distribution
+    /// - `se` standard error of the normal distribution
     ///
     /// ### Student T distribution (`LikelihoodFamily::StudentT`)
     /// - `mean` mean of the t-distribution
@@ -252,9 +252,9 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
             LikelihoodFamily::Normal => {
                 let mean = value.params[ParameterName::Mean]
                     .ok_or(Self::Error::MissingLikelihoodParameter("mean"))?;
-                let sd = value.params[ParameterName::Sd]
-                    .ok_or(Self::Error::MissingLikelihoodParameter("sd"))?;
-                NormalLikelihood::new(mean, sd)
+                let se = value.params[ParameterName::SE]
+                    .ok_or(Self::Error::MissingLikelihoodParameter("se"))?;
+                NormalLikelihood::new(mean, se)
             }
             LikelihoodFamily::StudentT => {
                 let mean = value.params[ParameterName::Mean]
