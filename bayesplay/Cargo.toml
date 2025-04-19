@@ -5,18 +5,9 @@ edition = "2024"
 
 [dependencies]
 itertools = "^0.12.1"
-rand_distr = "0.4.3"
-rand_xoshiro = "0.6.0"
-rayon = "1.9"
 rmath = {version = "0.1.0", path = "../rmath"}
-rmp-serde = "1.1.2"
 serde = {version = "1.0.197", features = ["derive"]}
-serde_json = "1.0.114"
 thiserror = "1.0.58"
 anyhow = "1.0.81"
-random = "0.14.0"
-rand = "0.8.5"
-log = "0.4.21"
-statrs = "0.16.0"
 approx = "0.5.1"
 

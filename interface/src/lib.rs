@@ -342,7 +342,7 @@ impl TryFrom<&str> for PriorFamily {
 /// External interface for [Prior] definitions, used for serializing and
 /// deserializing from/to JSON.
 /// ```
-/// # use bayesplay_rs::PriorInterface;
+/// # use interface::PriorInterface;
 /// # fn main() {
 ///    let json_string = r#"
 ///     {
