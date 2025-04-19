@@ -175,8 +175,10 @@ impl Range for Prior {
 
 impl Integrate<IntegralError, PriorError> for Prior {
     fn integral(&self) -> Result<f64, IntegralError> {
-   
         let prior = *self;
+        if prior.is_point() {
+            return Ok(1.0);
+        }
         let (lb, ub) = prior.range_or_default();
         let f = move |x| prior.function(x).unwrap();
         let h = integrate!(f = f, lower = lb, upper = ub);
@@ -185,10 +187,21 @@ impl Integrate<IntegralError, PriorError> for Prior {
             Err(e) => Err(IntegralError::Intergaration(e)),
         }
     }
-    fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError>{
+    fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
         let prior = *self;
         let lb = lb.unwrap_or(prior.range_or_default().0);
         let ub = ub.unwrap_or(prior.range_or_default().1);
+
+        if prior.is_point() {
+            let Prior::Point(point_prior) = prior else {
+                unreachable!()
+            };
+            if (lb..=ub).contains(&point_prior.point) {
+                return Ok(1.0);
+            } else {
+                return Ok(0.0);
+            }
+        }
 
         let f = move |x| prior.function(x).unwrap();
         let h = integrate!(f = f, lower = lb, upper = ub);
@@ -198,4 +211,3 @@ impl Integrate<IntegralError, PriorError> for Prior {
         }
     }
 }
-
