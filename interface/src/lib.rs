@@ -252,7 +252,7 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
             LikelihoodFamily::Normal => {
                 let mean = value.params[ParameterName::Mean]
                     .ok_or(Self::Error::MissingLikelihoodParameter("mean"))?;
-                let se = value.params[ParameterName::SE]
+                let se = value.params[ParameterName::Se]
                     .ok_or(Self::Error::MissingLikelihoodParameter("se"))?;
                 NormalLikelihood::new(mean, se)
             }
