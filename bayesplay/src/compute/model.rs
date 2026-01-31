@@ -42,11 +42,11 @@ pub struct Model {
 #[derive(Error, Debug)]
 pub enum IntegralError {
     #[error("Error with prior: {0}")]
-    Prior(PriorError),
+    Prior(#[from] PriorError),
     #[error("Error with likelihood: {0}")]
-    Likelihood(LikelihoodError),
+    Likelihood(#[from] LikelihoodError),
     #[error("Error with integration: {0}")]
-    Intergaration(rmath::integration::IntegrationError),
+    Integration(rmath::integration::IntegrationError),
 }
 
 impl Model {
@@ -95,7 +95,7 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
     /// let likelihood = NormalLikelihood::new(0.2, 4.0);
     /// let prior = NormalPrior::new(0.0, 1.0, (Some(-f64::INFINITY), Some(f64::INFINITY)));
     ///
-    /// let model = Model {prior, likelihood, range: (-f64::INFINITY, f64::INFINITY)};
+    /// let model = Model {prior: prior.into(), likelihood: likelihood.into(), range: (-f64::INFINITY, f64::INFINITY)};
     /// let auc = model.integral().unwrap();
     ///
     /// assert_eq!(auc as f32, 0.09664394965841581 as f32);
@@ -106,13 +106,11 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
         let likelihood = self.likelihood;
 
         let (lower, upper) = self.range_or_default();
-        prior.validate().map_err(IntegralError::Prior)?;
-        likelihood.validate().map_err(IntegralError::Likelihood)?;
+        prior.validate()?;
+        likelihood.validate()?;
 
         match prior {
-            Prior::Point(point) => likelihood
-                .function(point.point)
-                .map_err(IntegralError::Likelihood),
+            Prior::Point(point) => Ok(likelihood.function(point.point)?),
             _ => {
                 let model = *self;
                 let f = move |x| model.function(x).unwrap();
@@ -120,7 +118,7 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
 
                 match h {
                     Ok(v) => Ok(v.value),
-                    Err(e) => Err(IntegralError::Intergaration(e)),
+                    Err(e) => Err(IntegralError::Integration(e)),
                 }
             }
         }
@@ -166,7 +164,6 @@ impl Function<&[f64], Vec<Option<f64>>, anyhow::Error> for Posterior {
         Ok(res)
     }
 }
-
 
 impl Function<f64, f64, anyhow::Error> for Predictive {
     fn function(&self, x: f64) -> Result<f64, anyhow::Error> {
@@ -261,7 +258,7 @@ impl Integrate<IntegralError, anyhow::Error> for Posterior {
         let h = integrate!(f = f, lower = lb, upper = ub);
         match h {
             Ok(v) => Ok(v.value),
-            Err(e) => Err(IntegralError::Intergaration(e)),
+            Err(e) => Err(IntegralError::Integration(e)),
         }
     }
     fn integral(&self) -> Result<f64, IntegralError> {
@@ -271,7 +268,7 @@ impl Integrate<IntegralError, anyhow::Error> for Posterior {
         let h = integrate!(f = f, lower = lb, upper = ub);
         match h {
             Ok(v) => Ok(v.value),
-            Err(e) => Err(IntegralError::Intergaration(e)),
+            Err(e) => Err(IntegralError::Integration(e)),
         }
     }
 }

@@ -237,7 +237,7 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
     ///             value: Some(0.0),
     ///         },
     ///         ParamSetting {
-    ///             name: ParameterName::Sd,
+    ///             name: ParameterName::Se,
     ///             value: Some(1.0),
     ///         },
     ///     ]),
@@ -254,7 +254,7 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
                     .ok_or(Self::Error::MissingLikelihoodParameter("mean"))?;
                 let se = value.params[ParameterName::Se]
                     .ok_or(Self::Error::MissingLikelihoodParameter("se"))?;
-                NormalLikelihood::new(mean, se)
+                NormalLikelihood::new(mean, se).into()
             }
             LikelihoodFamily::StudentT => {
                 let mean = value.params[ParameterName::Mean]
@@ -263,14 +263,14 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
                     .ok_or(Self::Error::MissingLikelihoodParameter("sd"))?;
                 let df = value.params[ParameterName::Df]
                     .ok_or(Self::Error::MissingLikelihoodParameter("df"))?;
-                StudentTLikelihood::new(mean, sd, df)
+                StudentTLikelihood::new(mean, sd, df).into()
             }
             LikelihoodFamily::NoncentralD => {
                 let d = value.params[ParameterName::D]
                     .ok_or(Self::Error::MissingLikelihoodParameter("d"))?;
                 let n = value.params[ParameterName::N]
                     .ok_or(Self::Error::MissingLikelihoodParameter("n"))?;
-                NoncentralDLikelihood::new(d, n)
+                NoncentralDLikelihood::new(d, n).into()
             }
             LikelihoodFamily::NoncentralD2 => {
                 let d = value.params[ParameterName::D]
@@ -279,21 +279,21 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
                     .ok_or(Self::Error::MissingLikelihoodParameter("n1"))?;
                 let n2 = value.params[ParameterName::N2]
                     .ok_or(Self::Error::MissingLikelihoodParameter("n2"))?;
-                NoncentralD2Likelihood::new(d, n1, n2)
+                NoncentralD2Likelihood::new(d, n1, n2).into()
             }
             LikelihoodFamily::NoncentralT => {
                 let t = value.params[ParameterName::T]
                     .ok_or(Self::Error::MissingLikelihoodParameter("t"))?;
                 let df = value.params[ParameterName::Df]
                     .ok_or(Self::Error::MissingLikelihoodParameter("df"))?;
-                NoncentralTLikelihood::new(t, df)
+                NoncentralTLikelihood::new(t, df).into()
             }
             LikelihoodFamily::Binomial => {
                 let trials: f64 = value.params[ParameterName::Trials]
                     .ok_or(Self::Error::MissingLikelihoodParameter("trials"))?;
                 let successes: f64 = value.params[ParameterName::Successes]
                     .ok_or(Self::Error::MissingLikelihoodParameter("successes"))?;
-                BinomialLikelihood::new(successes, trials)
+                BinomialLikelihood::new(successes, trials).into()
             }
         };
         Ok(likelihood)
@@ -448,12 +448,12 @@ impl TryFrom<PriorInterface> for Prior {
                     .ok_or(InterfaceError::MissingPriorParameter("location"))?;
                 let scale = value.params[ParameterName::Scale]
                     .ok_or(InterfaceError::MissingPriorParameter("scale"))?;
-                CauchyPrior::new(location, scale, range)
+                CauchyPrior::new(location, scale, range).into()
             }
             PriorFamily::Point => {
                 let point = value.params[ParameterName::Point]
                     .ok_or(InterfaceError::MissingPriorParameter("point"))?;
-                PointPrior::new(point)
+                PointPrior::new(point).into()
             }
 
             PriorFamily::Normal => {
@@ -467,7 +467,7 @@ impl TryFrom<PriorInterface> for Prior {
 
                 let sd = value.params[ParameterName::Sd]
                     .ok_or(InterfaceError::MissingPriorParameter("sd"))?;
-                NormalPrior::new(mean, sd, range)
+                NormalPrior::new(mean, sd, range).into()
             }
             PriorFamily::StudentT => {
                 let range = (
@@ -481,14 +481,14 @@ impl TryFrom<PriorInterface> for Prior {
                     .ok_or(InterfaceError::MissingPriorParameter("sd"))?;
                 let df = value.params[ParameterName::Df]
                     .ok_or(InterfaceError::MissingPriorParameter("df"))?;
-                StudentTPrior::new(mean, sd, df, range)
+                StudentTPrior::new(mean, sd, df, range).into()
             }
             PriorFamily::Uniform => {
                 let min = value.params[ParameterName::Min]
                     .ok_or(InterfaceError::MissingPriorParameter("min"))?;
                 let max = value.params[ParameterName::Max]
                     .ok_or(InterfaceError::MissingPriorParameter("max"))?;
-                UniformPrior::new(min, max)
+                UniformPrior::new(min, max).into()
             }
             PriorFamily::Beta => {
                 let range = (
@@ -499,7 +499,7 @@ impl TryFrom<PriorInterface> for Prior {
                     .ok_or(InterfaceError::MissingPriorParameter("shape1"))?;
                 let shape2 = value.params[ParameterName::Beta]
                     .ok_or(InterfaceError::MissingPriorParameter("shape2"))?;
-                BetaPrior::new(shape1, shape2, range)
+                BetaPrior::new(shape1, shape2, range).into()
             }
         };
 

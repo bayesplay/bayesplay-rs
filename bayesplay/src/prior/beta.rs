@@ -8,7 +8,6 @@ use crate::common::Range;
 use crate::common::Validate;
 
 use super::Normalize;
-use super::Prior;
 use super::PriorError;
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
@@ -19,9 +18,8 @@ pub struct BetaPrior {
 }
 
 impl BetaPrior {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(alpha: f64, beta: f64, range: (Option<f64>, Option<f64>)) -> Prior {
-        Prior::Beta(BetaPrior { alpha, beta, range })
+    pub fn new(alpha: f64, beta: f64, range: (Option<f64>, Option<f64>)) -> Self {
+        BetaPrior { alpha, beta, range }
     }
 }
 
@@ -37,53 +35,26 @@ impl Range for BetaPrior {
 
 impl Validate<PriorError> for BetaPrior {
     fn validate(&self) -> Result<(), PriorError> {
-        let mut errors: Vec<PriorError> = Vec::with_capacity(4);
+        let mut errors: Vec<PriorError> = Vec::new();
         let (lower, upper) = self.range_or_default();
 
         if lower < 0.0 || upper > 1.0 {
-            errors.push(PriorError::InvalidRangeBounds)
+            errors.push(PriorError::InvalidRangeBounds);
         }
 
         if self.alpha.is_sign_negative() {
-            errors.push(PriorError::InvalidShapeParameter(self.alpha))
-        };
+            errors.push(PriorError::InvalidShapeParameter(self.alpha));
+        }
 
         if self.beta.is_sign_negative() {
-            errors.push(PriorError::InvalidShapeParameter(self.beta))
+            errors.push(PriorError::InvalidShapeParameter(self.beta));
         }
 
         if lower == upper {
-            errors.push(PriorError::InvalidRange)
+            errors.push(PriorError::InvalidRange);
         }
 
-        if errors.len() == 1 {
-            return Err(errors[0].clone());
-        }
-        if errors.len() == 2 {
-            return Err(PriorError::MultiError2(
-                Box::new(errors[0].clone()),
-                Box::new(errors[1].clone()),
-            ));
-        }
-
-        if errors.len() == 3 {
-            return Err(PriorError::MultiError3(
-                Box::new(errors[0].clone()),
-                Box::new(errors[1].clone()),
-                Box::new(errors[2].clone()),
-            ));
-        }
-
-        if errors.len() == 3 {
-            return Err(PriorError::MultiError4(
-                Box::new(errors[0].clone()),
-                Box::new(errors[1].clone()),
-                Box::new(errors[2].clone()),
-                Box::new(errors[3].clone()),
-            ));
-        }
-
-        Ok(())
+        PriorError::from_errors(errors)
     }
 }
 

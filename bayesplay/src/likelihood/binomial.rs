@@ -7,8 +7,6 @@ use crate::common::Validate;
 use crate::likelihood::LikelihoodError;
 use crate::likelihood::Observation;
 
-use super::Likelihood;
-
 #[derive(Default, Clone, Copy, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
 pub struct BinomialLikelihood {
     pub successes: f64,
@@ -16,8 +14,7 @@ pub struct BinomialLikelihood {
 }
 
 impl BinomialLikelihood {
-    #[allow(clippy::new_ret_no_self)]
-    /// Creates a new `BinomialLikelihood` wrapped in a `Likelihood::Binomial`.
+    /// Creates a new `BinomialLikelihood`.
     ///
     /// # Examples
     ///
@@ -28,6 +25,7 @@ impl BinomialLikelihood {
     /// let trials = 10.0;
     /// let likelihood = BinomialLikelihood::new(successes, trials);
     ///
+    /// let likelihood: Likelihood = likelihood.into();
     /// match likelihood {
     ///     Likelihood::Binomial(binomial) => {
     ///         assert_eq!(binomial.successes, successes);
@@ -36,11 +34,10 @@ impl BinomialLikelihood {
     ///     _ => panic!("Expected a Binomial likelihood"),
     /// }
     /// ```
-    pub fn new(successes: f64, trials: f64) -> Likelihood {
-        Likelihood::Binomial(BinomialLikelihood { successes, trials })
+    pub fn new(successes: f64, trials: f64) -> Self {
+        BinomialLikelihood { successes, trials }
     }
 }
-
 
 impl Function<f64, f64, LikelihoodError> for BinomialLikelihood {
     /// Evaluates the binomial likelihood function for a given probability `p`.
@@ -128,42 +125,31 @@ impl Function<f64, f64, LikelihoodError> for BinomialLikelihood {
 ///     trials: 0.0,
 /// };
 /// match both_invalid.validate() {
-///     Err(LikelihoodError::MultiError2(box_err1, box_err2)) => {
-///         match (*box_err1, *box_err2) {
-///             (LikelihoodError::InvalidTrials(t), LikelihoodError::InvalidSuccess(s)) => {
-///                 assert_eq!(t, 0.0);
-///                 assert_eq!(s, 5.0);
-///             },
-///             (LikelihoodError::InvalidSuccess(s), LikelihoodError::InvalidTrials(t)) => {
-///                 assert_eq!(t, 0.0);
-///                 assert_eq!(s, 5.0);
-///             },
-///             _ => panic!("Wrong error types in MultiError2"),
-///         }
+///     Err(LikelihoodError::MultipleErrors(errors)) => {
+///         assert_eq!(errors.len(), 2);
+///         assert!(matches!(errors[0], LikelihoodError::InvalidTrials(0.0)));
+///         assert!(matches!(errors[1], LikelihoodError::InvalidSuccess(5.0)));
 ///     },
-///     other => panic!("Expected MultiError2, got {:?}", other),
+///     other => panic!("Expected MultipleErrors, got {:?}", other),
 /// }
 /// ```
 impl Validate<LikelihoodError> for BinomialLikelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {
+        let mut errors = Vec::new();
+
         let trials_less_than_one = self.trials < 1.0;
-        let successes_greater_than_trials = self.successes > self.trials;
-
         let trials_is_not_whole_number = self.trials.fract() != 0.0;
-        let successes_is_not_whole_number = self.successes.fract() != 0.0;
-
-        let trials_invalid = trials_less_than_one | trials_is_not_whole_number;
-        let success_invalid = successes_greater_than_trials | successes_is_not_whole_number;
-
-        match (trials_invalid, success_invalid) {
-            (true, false) => Err(LikelihoodError::InvalidTrials(self.trials)),
-            (false, true) => Err(LikelihoodError::InvalidSuccess(self.successes)),
-            (true, true) => Err(LikelihoodError::MultiError2(
-                Box::new(LikelihoodError::InvalidTrials(self.trials)),
-                Box::new(LikelihoodError::InvalidSuccess(self.successes)),
-            )),
-            (false, false) => Ok(()),
+        if trials_less_than_one || trials_is_not_whole_number {
+            errors.push(LikelihoodError::InvalidTrials(self.trials));
         }
+
+        let successes_greater_than_trials = self.successes > self.trials;
+        let successes_is_not_whole_number = self.successes.fract() != 0.0;
+        if successes_greater_than_trials || successes_is_not_whole_number {
+            errors.push(LikelihoodError::InvalidSuccess(self.successes));
+        }
+
+        LikelihoodError::from_errors(errors)
     }
 }
 

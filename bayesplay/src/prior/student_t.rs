@@ -4,7 +4,8 @@ use rmath::pt_scaled;
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
-use super::{Prior, PriorError};
+use super::PriorError;
+use crate::common::truncated_normalization;
 use crate::common::Function;
 use crate::common::Range;
 use crate::common::Validate;
@@ -18,55 +19,34 @@ pub struct StudentTPrior {
 }
 
 impl StudentTPrior {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(mean: f64, sd: f64, df: f64, range: (Option<f64>, Option<f64>)) -> Prior {
-        Prior::StudentT(StudentTPrior {
+    pub fn new(mean: f64, sd: f64, df: f64, range: (Option<f64>, Option<f64>)) -> Self {
+        StudentTPrior {
             mean,
             sd,
             df,
             range,
-        })
+        }
     }
 }
 
 impl Validate<PriorError> for StudentTPrior {
     fn validate(&self) -> Result<(), PriorError> {
-        let invalid_range = {
-            let (lower, upper) = self.range_or_default();
-            lower == upper
-        };
-
-        let mut errors: Vec<PriorError> = Vec::with_capacity(3);
+        let mut errors: Vec<PriorError> = Vec::new();
 
         if self.sd <= 0.0 {
-            errors.push(PriorError::InvalidStandardDeviation(self.sd))
+            errors.push(PriorError::InvalidStandardDeviation(self.sd));
         }
 
         if self.df <= 1.0 {
-            errors.push(PriorError::InvalidDegreesOfFreedom(self.df))
-        }
-        if invalid_range {
-            errors.push(PriorError::InvalidRange)
+            errors.push(PriorError::InvalidDegreesOfFreedom(self.df));
         }
 
-        if errors.len() == 1 {
-            return Err(errors[0].clone());
-        }
-        if errors.len() == 2 {
-            return Err(PriorError::MultiError2(
-                Box::new(errors[0].clone()),
-                Box::new(errors[1].clone()),
-            ));
+        let (lower, upper) = self.range_or_default();
+        if lower == upper {
+            errors.push(PriorError::InvalidRange);
         }
 
-        if errors.len() == 3 {
-            return Err(PriorError::MultiError3(
-                Box::new(errors[0].clone()),
-                Box::new(errors[1].clone()),
-                Box::new(errors[2].clone()),
-            ));
-        }
-        Ok(())
+        PriorError::from_errors(errors)
     }
 }
 
@@ -97,44 +77,17 @@ impl Function<f64, f64, PriorError> for StudentTPrior {
 impl Normalize for StudentTPrior {
     fn normalize(&self) -> Result<f64, PriorError> {
         let (lower, upper) = self.range_or_default();
-        let res = match (lower.is_infinite(), upper.is_infinite()) {
-            (true, true) => 1.0,
-            (false, true) => pt_scaled!(
-                q = lower,
+        let res = truncated_normalization(lower, upper, |x, lower_tail| {
+            pt_scaled!(
+                q = x,
                 mean = self.mean,
                 sd = self.sd,
                 df = self.df,
-                lower_tail = false
+                lower_tail = lower_tail
             )
-            .map_err(PriorError::DistributionError)?,
-            (true, false) => pt_scaled!(
-                q = upper,
-                mean = self.mean,
-                sd = self.sd,
-                df = self.df,
-                lower_tail = true
-            )
-            .map_err(PriorError::DistributionError)?,
-            (false, false) => {
-                (1.0 - pt_scaled!(
-                    q = lower,
-                    mean = self.mean,
-                    sd = self.sd,
-                    df = self.df,
-                    lower_tail = true
-                )
-                .map_err(PriorError::DistributionError)?)
-                    - (1.0
-                        - (pt_scaled!(
-                            q = upper,
-                            mean = self.mean,
-                            sd = self.sd,
-                            df = self.df,
-                            lower_tail = true
-                        )
-                        .map_err(PriorError::DistributionError)?))
-            }
-        };
+            .map_err(PriorError::DistributionError)
+        })?;
+
         if res == 0.0 {
             Err(PriorError::NormalizingError)?;
         }

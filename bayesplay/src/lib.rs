@@ -17,6 +17,7 @@ pub mod prelude {
     pub use crate::likelihood::Likelihood;
     pub use crate::likelihood::Observation;
     pub use crate::likelihood::LikelihoodError;
+    pub use crate::likelihood::LikelihoodResult;
    
     // Specific likelihoods
     pub use crate::likelihood::NormalLikelihood;
@@ -29,6 +30,7 @@ pub mod prelude {
     // General prior
     pub use crate::prior::Prior;
     pub use crate::prior::PriorError;
+    pub use crate::prior::PriorResult;
     pub use crate::prior::Normalize;
     pub use crate::prior::TypeOf;
 

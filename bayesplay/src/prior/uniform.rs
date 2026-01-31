@@ -1,12 +1,11 @@
 use rmath::dunif;
 use serde::{Deserialize, Serialize};
 
+use super::Normalize;
 use crate::common::Function;
 use crate::common::Range;
 use crate::common::Validate;
-use super::Normalize;
 
-use super::Prior;
 use super::PriorError;
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
@@ -16,9 +15,8 @@ pub struct UniformPrior {
 }
 
 impl UniformPrior {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(min: f64, max: f64) -> Prior {
-        Prior::Uniform(UniformPrior { min, max })
+    pub fn new(min: f64, max: f64) -> Self {
+        UniformPrior { min, max }
     }
 }
 
@@ -60,4 +58,3 @@ impl Normalize for UniformPrior {
         Ok(1.0)
     }
 }
-

@@ -16,11 +16,9 @@ use serde::{Deserialize, Serialize};
 /// // Create a normal likelihood with mean 0.0 and standard error 1.0
 /// let likelihood = NormalLikelihood::new(0.0, 1.0);
 ///
-/// // Access the parameters
-/// if let Likelihood::Normal(normal) = likelihood {
-///     assert_eq!(normal.mean, 0.0);
-///     assert_eq!(normal.se, 1.0);
-/// }
+/// // Access the parameters directly
+/// assert_eq!(likelihood.mean, 0.0);
+/// assert_eq!(likelihood.se, 1.0);
 /// ```
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, PartialOrd)]
 #[allow(dead_code)]
@@ -29,15 +27,10 @@ pub struct NormalLikelihood {
     pub se: f64,
 }
 
-use crate::likelihood::LikelihoodError;
-use crate::likelihood::Observation;
 use crate::common::Function;
 use crate::common::Validate;
-
-use super::Likelihood;
-
-
-
+use crate::likelihood::LikelihoodError;
+use crate::likelihood::Observation;
 
 /// Constructor methods for creating normal likelihood functions.
 ///
@@ -49,19 +42,16 @@ use super::Likelihood;
 /// // Create a normal likelihood with mean 0.5 and standard error 0.2
 /// let likelihood = NormalLikelihood::new(0.5, 0.2);
 ///
-/// // Verify the type and parameters
-/// if let Likelihood::Normal(normal) = likelihood {
-///     assert_eq!(normal.mean, 0.5);
-///     assert_eq!(normal.se, 0.2);
-/// }
+/// // Access the parameters directly
+/// assert_eq!(likelihood.mean, 0.5);
+/// assert_eq!(likelihood.se, 0.2);
 ///
 /// // Create a likelihood for different experimental results
 /// let new_result = NormalLikelihood::new(1.2, 0.3);
 /// ```
 impl NormalLikelihood {
-    #[allow(clippy::new_ret_no_self)] 
-    pub fn new(mean: f64, se: f64) -> Likelihood {
-        Likelihood::Normal(NormalLikelihood { mean, se })
+    pub fn new(mean: f64, se: f64) -> Self {
+        NormalLikelihood { mean, se }
     }
 }
 
@@ -75,20 +65,20 @@ impl NormalLikelihood {
 /// use bayesplay::prelude::*;
 ///
 /// // Create a normal likelihood with mean 0.0 and standard error 1.0
-/// if let Likelihood::Normal(mut likelihood) = NormalLikelihood::new(0.0, 1.0) {
-///     // The observation is the mean value
-///     assert_eq!(likelihood.get_observation(), Some(0.0));
+/// let mut likelihood = NormalLikelihood::new(0.0, 1.0);
 ///
-///     // Update the observation to a new value
-///     likelihood.update_observation(2.5);
-///     
-///     // Verify the observation was updated
-///     assert_eq!(likelihood.get_observation(), Some(2.5));
-///     assert_eq!(likelihood.mean, 2.5);
-///     
-///     // The standard error remains unchanged
-///     assert_eq!(likelihood.se, 1.0);
-/// }
+/// // The observation is the mean value
+/// assert_eq!(likelihood.get_observation(), Some(0.0));
+///
+/// // Update the observation to a new value
+/// likelihood.update_observation(2.5);
+///
+/// // Verify the observation was updated
+/// assert_eq!(likelihood.get_observation(), Some(2.5));
+/// assert_eq!(likelihood.mean, 2.5);
+///
+/// // The standard error remains unchanged
+/// assert_eq!(likelihood.se, 1.0);
 /// ```
 impl Observation for NormalLikelihood {
     fn get_observation(&self) -> Option<f64> {
@@ -112,24 +102,24 @@ impl Observation for NormalLikelihood {
 /// use std::f64::consts::PI;
 ///
 /// // Create a normal likelihood with mean 0.0 and standard error 1.0
-/// if let Likelihood::Normal(likelihood) = NormalLikelihood::new(0.0, 1.0) {
-///     // When x equals the mean, the value should be at maximum (1/√(2πσ²))
-///     let max_value = likelihood.function(0.0).unwrap();
-///     let expected_max = 1.0 / (2.0 * PI).sqrt();
-///     assert!((max_value - expected_max).abs() < 1e-10);
-///     
-///     // At one standard error away from mean (x = 1.0), the likelihood decreases
-///     let value_at_1sd = likelihood.function(1.0).unwrap();
-///     assert!(value_at_1sd < max_value);
-///     
-///     // The function is symmetric around the mean
-///     let value_at_minus_1sd = likelihood.function(-1.0).unwrap();
-///     assert!((value_at_1sd - value_at_minus_1sd).abs() < 1e-10);
-///     
-///     // With invalid standard error, the function should return an error
-///     let invalid_likelihood = NormalLikelihood { mean: 0.0, se: -1.0 };
-///     assert!(invalid_likelihood.function(0.0).is_err());
-/// }
+/// let likelihood = NormalLikelihood::new(0.0, 1.0);
+///
+/// // When x equals the mean, the value should be at maximum (1/√(2πσ²))
+/// let max_value = likelihood.function(0.0).unwrap();
+/// let expected_max = 1.0 / (2.0 * PI).sqrt();
+/// assert!((max_value - expected_max).abs() < 1e-10);
+///
+/// // At one standard error away from mean (x = 1.0), the likelihood decreases
+/// let value_at_1sd = likelihood.function(1.0).unwrap();
+/// assert!(value_at_1sd < max_value);
+///
+/// // The function is symmetric around the mean
+/// let value_at_minus_1sd = likelihood.function(-1.0).unwrap();
+/// assert!((value_at_1sd - value_at_minus_1sd).abs() < 1e-10);
+///
+/// // With invalid standard error, the function should return an error
+/// let invalid_likelihood = NormalLikelihood { mean: 0.0, se: -1.0 };
+/// assert!(invalid_likelihood.function(0.0).is_err());
 /// ```
 impl Function<f64, f64, LikelihoodError> for NormalLikelihood {
     fn function(&self, x: f64) -> Result<f64, LikelihoodError> {
@@ -151,17 +141,17 @@ impl Function<f64, f64, LikelihoodError> for NormalLikelihood {
 /// use bayesplay::prelude::*;
 ///
 /// // Create a normal likelihood with valid parameters
-/// if let Likelihood::Normal(valid_likelihood) = NormalLikelihood::new(0.0, 1.0) {
-///     // Validation should pass
-///     assert!(valid_likelihood.validate().is_ok());
-///     
-///     // Function should also work since it calls validate()
-///     assert!(valid_likelihood.function(0.0).is_ok());
-/// }
+/// let valid_likelihood = NormalLikelihood::new(0.0, 1.0);
+///
+/// // Validation should pass
+/// assert!(valid_likelihood.validate().is_ok());
+///
+/// // Function should also work since it calls validate()
+/// assert!(valid_likelihood.function(0.0).is_ok());
 ///
 /// // Create a normal likelihood with invalid standard error
 /// let invalid_likelihood = NormalLikelihood { mean: 0.0, se: 0.0 };
-/// 
+///
 /// // Validation should fail with InvalidSE error
 /// let validation_result = invalid_likelihood.validate();
 /// assert!(validation_result.is_err());
