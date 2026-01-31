@@ -1,5 +1,5 @@
+use enum_dispatch::enum_dispatch;
 use rmath::integrate;
-
 use thiserror::Error;
 
 pub mod beta;
@@ -24,26 +24,6 @@ pub use uniform::UniformPrior;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
-pub enum Prior {
-    Normal(NormalPrior),
-    Point(PointPrior),
-    Cauchy(CauchyPrior),
-    Uniform(UniformPrior),
-    StudentT(StudentTPrior),
-    Beta(BetaPrior),
-}
-
-#[derive(PartialEq, Debug, Serialize, Clone, Copy)]
-pub enum PriorFamily {
-    Cauchy,
-    Normal,
-    Point,
-    Uniform,
-    StudentT,
-    Beta,
-}
-
 #[derive(Error, Debug, Serialize, Deserialize, Clone)]
 pub enum PriorError {
     #[error("Invalid standard deviation ({0}). Must be positive.")]
@@ -64,67 +44,231 @@ pub enum PriorError {
     NormalizingError,
     #[error("Error with distribution: {0}")]
     DistributionError(&'static str),
-    #[error("Multiple errors: {0}, {1}]")]
-    MultiError2(Box<PriorError>, Box<PriorError>),
-    #[error("Multiple errors: {0}, {1}, {2}]")]
-    MultiError3(Box<PriorError>, Box<PriorError>, Box<PriorError>),
-    #[error("Multiple errors: {0}, {1}, {2}, {3}]")]
-    MultiError4(
-        Box<PriorError>,
-        Box<PriorError>,
-        Box<PriorError>,
-        Box<PriorError>,
-    ),
+    #[error("Multiple validation errors: {}", .0.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("; "))]
+    MultipleErrors(Vec<PriorError>),
 }
 
+/// Result type alias for prior operations
+pub type PriorResult<T> = Result<T, PriorError>;
+
+impl PriorError {
+    /// Consolidate multiple errors into a single error result.
+    /// Returns Ok(()) if the vector is empty, a single error if only one,
+    /// or MultipleErrors if more than one.
+    pub fn from_errors(errors: Vec<PriorError>) -> Result<(), PriorError> {
+        match errors.len() {
+            0 => Ok(()),
+            1 => Err(errors.into_iter().next().unwrap()),
+            _ => Err(PriorError::MultipleErrors(errors)),
+        }
+    }
+}
+
+#[derive(PartialEq, Debug, Serialize, Clone, Copy)]
+pub enum PriorFamily {
+    Cauchy,
+    Normal,
+    Point,
+    Uniform,
+    StudentT,
+    Beta,
+}
+
+/// Trait for normalizing distributions (used by enum_dispatch)
+#[enum_dispatch]
 pub trait Normalize {
     fn normalize(&self) -> Result<f64, PriorError>;
 }
 
-impl Normalize for Prior {
-    fn normalize(&self) -> Result<f64, PriorError> {
-        match self {
-            Prior::Normal(prior) => prior.normalize(),
-            Prior::Point(prior) => prior.normalize(),
-            Prior::Cauchy(prior) => prior.normalize(),
-            Prior::Uniform(prior) => prior.normalize(),
-            Prior::StudentT(prior) => prior.normalize(),
-            Prior::Beta(prior) => prior.normalize(),
-        }
+/// Concrete trait for prior function evaluation (used by enum_dispatch)
+#[enum_dispatch]
+pub trait PriorFn {
+    fn prior_function(&self, x: f64) -> Result<f64, PriorError>;
+}
+
+/// Concrete trait for prior validation (used by enum_dispatch)
+#[enum_dispatch]
+pub trait PriorValidate {
+    fn prior_validate(&self) -> Result<(), PriorError>;
+}
+
+/// Concrete trait for prior range (used by enum_dispatch)
+#[enum_dispatch]
+pub trait PriorRange {
+    fn prior_range(&self) -> (Option<f64>, Option<f64>);
+    fn prior_default_range(&self) -> (f64, f64);
+}
+
+// Implement the concrete traits for each prior type by delegating to the generic traits
+
+impl PriorFn for NormalPrior {
+    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
+        Function::function(self, x)
     }
 }
 
-impl Validate<PriorError> for Prior {
-    fn validate(&self) -> Result<(), PriorError> {
-        match self {
-            Prior::Normal(prior) => prior.validate(),
-            Prior::Point(prior) => prior.validate(),
-            Prior::Cauchy(prior) => prior.validate(),
-            Prior::Uniform(prior) => prior.validate(),
-            Prior::StudentT(prior) => prior.validate(),
-            Prior::Beta(prior) => prior.validate(),
-        }
+impl PriorFn for PointPrior {
+    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
+        Function::function(self, x)
     }
 }
 
+impl PriorFn for CauchyPrior {
+    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
+        Function::function(self, x)
+    }
+}
+
+impl PriorFn for UniformPrior {
+    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
+        Function::function(self, x)
+    }
+}
+
+impl PriorFn for StudentTPrior {
+    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
+        Function::function(self, x)
+    }
+}
+
+impl PriorFn for BetaPrior {
+    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
+        Function::function(self, x)
+    }
+}
+
+impl PriorValidate for NormalPrior {
+    fn prior_validate(&self) -> Result<(), PriorError> {
+        Validate::validate(self)
+    }
+}
+
+impl PriorValidate for PointPrior {
+    fn prior_validate(&self) -> Result<(), PriorError> {
+        Validate::validate(self)
+    }
+}
+
+impl PriorValidate for CauchyPrior {
+    fn prior_validate(&self) -> Result<(), PriorError> {
+        Validate::validate(self)
+    }
+}
+
+impl PriorValidate for UniformPrior {
+    fn prior_validate(&self) -> Result<(), PriorError> {
+        Validate::validate(self)
+    }
+}
+
+impl PriorValidate for StudentTPrior {
+    fn prior_validate(&self) -> Result<(), PriorError> {
+        Validate::validate(self)
+    }
+}
+
+impl PriorValidate for BetaPrior {
+    fn prior_validate(&self) -> Result<(), PriorError> {
+        Validate::validate(self)
+    }
+}
+
+impl PriorRange for NormalPrior {
+    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
+        Range::range(self)
+    }
+    fn prior_default_range(&self) -> (f64, f64) {
+        Range::default_range(self)
+    }
+}
+
+impl PriorRange for PointPrior {
+    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
+        Range::range(self)
+    }
+    fn prior_default_range(&self) -> (f64, f64) {
+        Range::default_range(self)
+    }
+}
+
+impl PriorRange for CauchyPrior {
+    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
+        Range::range(self)
+    }
+    fn prior_default_range(&self) -> (f64, f64) {
+        Range::default_range(self)
+    }
+}
+
+impl PriorRange for UniformPrior {
+    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
+        Range::range(self)
+    }
+    fn prior_default_range(&self) -> (f64, f64) {
+        Range::default_range(self)
+    }
+}
+
+impl PriorRange for StudentTPrior {
+    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
+        Range::range(self)
+    }
+    fn prior_default_range(&self) -> (f64, f64) {
+        Range::default_range(self)
+    }
+}
+
+impl PriorRange for BetaPrior {
+    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
+        Range::range(self)
+    }
+    fn prior_default_range(&self) -> (f64, f64) {
+        Range::default_range(self)
+    }
+}
+
+#[enum_dispatch(Normalize, PriorFn, PriorValidate, PriorRange)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
+pub enum Prior {
+    Normal(NormalPrior),
+    Point(PointPrior),
+    Cauchy(CauchyPrior),
+    Uniform(UniformPrior),
+    StudentT(StudentTPrior),
+    Beta(BetaPrior),
+}
+
+// Note: From implementations are generated automatically by enum_dispatch
+
+// Implement the generic Function trait for Prior using enum_dispatch
 impl Function<f64, f64, PriorError> for Prior {
     fn function(&self, x: f64) -> Result<f64, PriorError> {
-        match self {
-            Prior::Normal(prior) => prior.function(x),
-            Prior::Point(prior) => prior.function(x),
-            Prior::Cauchy(prior) => prior.function(x),
-            Prior::Uniform(prior) => prior.function(x),
-            Prior::StudentT(prior) => prior.function(x),
-            Prior::Beta(prior) => prior.function(x),
-        }
+        self.prior_function(x)
     }
 }
 
 impl Function<&[f64], Vec<Option<f64>>, PriorError> for Prior {
     fn function(&self, x: &[f64]) -> Result<Vec<Option<f64>>, PriorError> {
         Ok(x.iter()
-            .map(|x| self.function(*x).ok())
+            .map(|x| self.prior_function(*x).ok())
             .collect::<Vec<Option<_>>>())
+    }
+}
+
+// Implement the generic Validate trait for Prior using enum_dispatch
+impl Validate<PriorError> for Prior {
+    fn validate(&self) -> Result<(), PriorError> {
+        self.prior_validate()
+    }
+}
+
+// Implement the Range trait for Prior using enum_dispatch
+impl Range for Prior {
+    fn range(&self) -> (Option<f64>, Option<f64>) {
+        self.prior_range()
+    }
+    fn default_range(&self) -> (f64, f64) {
+        self.prior_default_range()
     }
 }
 
@@ -150,29 +294,6 @@ impl TypeOf for Prior {
     }
 }
 
-impl Range for Prior {
-    fn range(&self) -> (Option<f64>, Option<f64>) {
-        match self {
-            Prior::Normal(prior) => prior.range(),
-            Prior::Cauchy(prior) => prior.range(),
-            Prior::Uniform(prior) => prior.range(),
-            Prior::StudentT(prior) => prior.range(),
-            Prior::Beta(prior) => prior.range(),
-            Prior::Point(prior) => prior.range(),
-        }
-    }
-    fn default_range(&self) -> (f64, f64) {
-        match self {
-            Prior::Normal(prior) => prior.default_range(),
-            Prior::Point(prior) => prior.default_range(),
-            Prior::Cauchy(prior) => prior.default_range(),
-            Prior::Uniform(prior) => prior.default_range(),
-            Prior::StudentT(prior) => prior.default_range(),
-            Prior::Beta(prior) => prior.default_range(),
-        }
-    }
-}
-
 impl Integrate<IntegralError, PriorError> for Prior {
     fn integral(&self) -> Result<f64, IntegralError> {
         let prior = *self;
@@ -184,7 +305,7 @@ impl Integrate<IntegralError, PriorError> for Prior {
         let h = integrate!(f = f, lower = lb, upper = ub);
         match h {
             Ok(v) => Ok(v.value),
-            Err(e) => Err(IntegralError::Intergaration(e)),
+            Err(e) => Err(IntegralError::Integration(e)),
         }
     }
     fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
@@ -207,7 +328,7 @@ impl Integrate<IntegralError, PriorError> for Prior {
         let h = integrate!(f = f, lower = lb, upper = ub);
         match h {
             Ok(v) => Ok(v.value),
-            Err(e) => Err(IntegralError::Intergaration(e)),
+            Err(e) => Err(IntegralError::Integration(e)),
         }
     }
 }

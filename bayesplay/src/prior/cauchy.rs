@@ -4,7 +4,8 @@ use rmath::pcauchy;
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
-use super::{Prior, PriorError};
+use super::PriorError;
+use crate::common::truncated_normalization;
 use crate::common::Function;
 use crate::common::Range;
 use crate::common::Validate;
@@ -17,13 +18,12 @@ pub struct CauchyPrior {
 }
 
 impl CauchyPrior {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(location: f64, scale: f64, range: (Option<f64>, Option<f64>)) -> Prior {
-        Prior::Cauchy(CauchyPrior {
+    pub fn new(location: f64, scale: f64, range: (Option<f64>, Option<f64>)) -> Self {
+        CauchyPrior {
             location,
             scale,
             range,
-        })
+        }
     }
 }
 
@@ -54,40 +54,15 @@ impl Range for CauchyPrior {
 impl Normalize for CauchyPrior {
     fn normalize(&self) -> Result<f64, PriorError> {
         let (lower, upper) = self.range_or_default();
-        let res = match (lower.is_infinite(), upper.is_infinite()) {
-            (true, true) => 1.0,
-            (false, true) => pcauchy!(
-                q = lower,
+        let res = truncated_normalization(lower, upper, |x, lower_tail| {
+            pcauchy!(
+                q = x,
                 location = self.location,
                 scale = self.scale,
-                lower_tail = false
+                lower_tail = lower_tail
             )
-            .map_err(PriorError::DistributionError)?,
-            (true, false) => pcauchy!(
-                q = upper,
-                location = self.location,
-                scale = self.scale,
-                lower_tail = true
-            )
-            .map_err(PriorError::DistributionError)?,
-            (false, false) => {
-                1.0 - pcauchy!(
-                    q = lower,
-                    location = self.location,
-                    scale = self.scale,
-                    lower_tail = true
-                )
-                .map_err(PriorError::DistributionError)?
-                    - (1.0
-                        - pcauchy!(
-                            q = upper,
-                            location = self.location,
-                            scale = self.scale,
-                            lower_tail = true
-                        )
-                        .map_err(PriorError::DistributionError)?)
-            }
-        };
+            .map_err(PriorError::DistributionError)
+        })?;
 
         if res == 0.0 {
             Err(PriorError::NormalizingError)?;
