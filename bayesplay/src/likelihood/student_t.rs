@@ -6,10 +6,47 @@ use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
 
+/// A Student's t likelihood function for t-distributed data.
+///
+/// This likelihood is appropriate when the data follow a scaled and shifted
+/// t-distribution, which is common when working with small sample sizes or
+/// when the population variance is unknown.
+///
+/// # Parameters
+///
+/// * `mean` - The observed mean (location parameter)
+/// * `sd` - The standard deviation (scale parameter, must be positive)
+/// * `df` - The degrees of freedom (must be positive)
+///
+/// # Mathematical Form
+///
+/// The likelihood uses a scaled t-distribution where the density at x is:
+///
+/// L(x) = dt((mean - x) / sd, df) / sd
+///
+/// where dt is the standard t-distribution density.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // t-distributed data with mean 2.5, sd 1.0, and 29 degrees of freedom
+/// let likelihood = StudentTLikelihood::new(2.5, 1.0, 29.0);
+///
+/// // Validate parameters
+/// assert!(likelihood.validate().is_ok());
+///
+/// // Evaluate the likelihood
+/// let value = likelihood.function(0.0).unwrap();
+/// ```
 #[derive(Default, Clone, Copy, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
 pub struct StudentTLikelihood {
+    /// The observed mean (location parameter).
     pub mean: f64,
+    /// The standard deviation (scale parameter).
     pub sd: f64,
+    /// The degrees of freedom.
     pub df: f64,
 }
 

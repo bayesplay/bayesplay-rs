@@ -1,9 +1,43 @@
 use rmath::dt;
 use serde::{Deserialize, Serialize};
 
+/// A noncentral d likelihood for one-sample effect sizes (Cohen's d).
+///
+/// This likelihood is used when the observed data is a standardized effect size
+/// from a one-sample design. The effect size d is related to the t-statistic
+/// and sample size, and follows a noncentral t-distribution.
+///
+/// # Parameters
+///
+/// * `d` - The observed effect size (Cohen's d)
+/// * `n` - The sample size (must be ≥ 1)
+///
+/// # Relationship to t-statistic
+///
+/// For a one-sample design:
+/// - t = d × √n
+/// - df = n - 1
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Effect size d = 0.5 from a sample of 30
+/// let likelihood = NoncentralDLikelihood::new(0.5, 30.0);
+///
+/// // Combine with a Cauchy prior on effect size
+/// let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
+/// let model: Model = Likelihood::from(likelihood) * prior;
+///
+/// // Compute the marginal likelihood
+/// let marginal = model.integral().unwrap();
+/// ```
 #[derive(Default, Clone, Copy, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
 pub struct NoncentralDLikelihood {
+    /// The observed effect size (Cohen's d).
     pub d: f64,
+    /// The sample size.
     pub n: f64,
 }
 

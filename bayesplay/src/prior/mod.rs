@@ -1,3 +1,56 @@
+//! Prior distributions for Bayesian inference.
+//!
+//! This module provides various prior distributions that represent beliefs about
+//! parameter values before observing data. Priors are combined with likelihoods
+//! to compute posterior distributions.
+//!
+//! # Available Priors
+//!
+//! | Type | Use Case | Parameters |
+//! |------|----------|------------|
+//! | [`NormalPrior`] | Symmetric, unbounded parameters | mean, sd |
+//! | [`CauchyPrior`] | Heavy-tailed priors | location, scale |
+//! | [`StudentTPrior`] | Adjustable tail weight | mean, sd, df |
+//! | [`UniformPrior`] | Equal probability in interval | min, max |
+//! | [`BetaPrior`] | Probabilities (0-1) | alpha, beta |
+//! | [`PointPrior`] | Point null hypothesis | point |
+//!
+//! # Truncation
+//!
+//! Most continuous priors support truncation to restrict the parameter space.
+//! This is useful when prior knowledge constrains parameters to certain regions.
+//!
+//! ```rust
+//! use bayesplay::prelude::*;
+//!
+//! // Normal prior truncated to positive values
+//! let positive_normal = NormalPrior::new(0.0, 1.0, (Some(0.0), None));
+//!
+//! // Cauchy prior truncated between -2 and 2
+//! let bounded_cauchy = CauchyPrior::new(0.0, 0.707, (Some(-2.0), Some(2.0)));
+//!
+//! // Student's t prior with lower bound only
+//! let lower_bounded_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), None));
+//! ```
+//!
+//! # Examples
+//!
+//! ```rust
+//! use bayesplay::prelude::*;
+//!
+//! // Create different types of priors
+//! let normal = NormalPrior::new(0.0, 1.0, (None, None));
+//! let cauchy = CauchyPrior::new(0.0, 0.707, (None, None));
+//! let point = PointPrior::new(0.0);
+//!
+//! // Convert to the Prior enum for use with models
+//! let prior: Prior = normal.into();
+//!
+//! // Combine with a likelihood
+//! let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+//! let model: Model = likelihood * prior;
+//! ```
+
 use enum_dispatch::enum_dispatch;
 use rmath::integrate;
 use thiserror::Error;
@@ -24,6 +77,28 @@ pub use uniform::UniformPrior;
 
 use serde::{Deserialize, Serialize};
 
+/// Errors that can occur when working with prior distributions.
+///
+/// This enum covers all validation errors for prior parameters across
+/// all prior types. When multiple validation errors occur, they are
+/// collected into a [`PriorError::MultipleErrors`] variant.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Invalid standard deviation
+/// let invalid = NormalPrior::new(0.0, -1.0, (None, None));
+/// match invalid.validate() {
+///     Err(PriorError::InvalidStandardDeviation(sd)) => assert_eq!(sd, -1.0),
+///     _ => panic!("Expected InvalidStandardDeviation error"),
+/// }
+///
+/// // Invalid range (equal bounds)
+/// let invalid = NormalPrior::new(0.0, 1.0, (Some(0.0), Some(0.0)));
+/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidRange)));
+/// ```
 #[derive(Error, Debug, Serialize, Deserialize, Clone)]
 pub enum PriorError {
     #[error("Invalid standard deviation ({0}). Must be positive.")]
@@ -64,19 +139,64 @@ impl PriorError {
     }
 }
 
+/// Enum representing the family (type) of a prior distribution.
+///
+/// This is used for runtime type identification of priors.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// assert_eq!(prior.type_of(), PriorFamily::Normal);
+///
+/// let prior: Prior = PointPrior::new(0.0).into();
+/// assert_eq!(prior.type_of(), PriorFamily::Point);
+/// assert!(prior.is_point());
+/// ```
 #[derive(PartialEq, Debug, Serialize, Clone, Copy)]
 pub enum PriorFamily {
+    /// Cauchy distribution prior.
     Cauchy,
+    /// Normal (Gaussian) distribution prior.
     Normal,
+    /// Point mass prior (Dirac delta).
     Point,
+    /// Uniform distribution prior.
     Uniform,
+    /// Student's t distribution prior.
     StudentT,
+    /// Beta distribution prior.
     Beta,
 }
 
-/// Trait for normalizing distributions (used by enum_dispatch)
+/// Trait for computing normalization constants of prior distributions.
+///
+/// For truncated distributions, the normalization constant is the probability
+/// mass within the truncation bounds. This ensures the truncated distribution
+/// integrates to 1.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Unbounded normal: normalization constant is 1
+/// let unbounded = NormalPrior::new(0.0, 1.0, (None, None));
+/// assert_eq!(unbounded.normalize().unwrap(), 1.0);
+///
+/// // Truncated normal: normalization constant is the probability mass in bounds
+/// let truncated = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
+/// let norm = truncated.normalize().unwrap();
+/// assert!((norm - 0.6827).abs() < 0.01); // ~68% of mass is within ±1 SD
+/// ```
 #[enum_dispatch]
 pub trait Normalize {
+    /// Computes the normalization constant for the distribution.
+    ///
+    /// Returns 1.0 for untruncated distributions. For truncated distributions,
+    /// returns the probability mass within the truncation bounds.
     fn normalize(&self) -> Result<f64, PriorError>;
 }
 
@@ -227,14 +347,82 @@ impl PriorRange for BetaPrior {
     }
 }
 
+/// A prior distribution for Bayesian inference.
+///
+/// This enum wraps all available prior types, allowing them to be used
+/// polymorphically with likelihood functions to form models.
+///
+/// # Creating Priors
+///
+/// Priors are typically created using the specific type's constructor,
+/// then converted to the enum using `.into()`:
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Create specific prior types
+/// let normal = NormalPrior::new(0.0, 1.0, (None, None));
+/// let cauchy = CauchyPrior::new(0.0, 0.707, (None, None));
+/// let point = PointPrior::new(0.0);
+///
+/// // Convert to Prior enum
+/// let prior: Prior = normal.into();
+/// ```
+///
+/// # Combining with Likelihoods
+///
+/// Priors are combined with likelihoods using multiplication to create models:
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+///
+/// // Create a model (order doesn't matter)
+/// let model: Model = prior * likelihood;
+/// // or: let model: Model = likelihood * prior;
+/// ```
+///
+/// # Evaluating Priors
+///
+/// Use the [`Function`] trait to evaluate the prior density at parameter values:
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+///
+/// // Evaluate the prior at different parameter values
+/// let density = prior.function(0.0).unwrap();
+/// assert!((density - 0.3989).abs() < 0.001);
+/// ```
+///
+/// # Type Identification
+///
+/// Use the [`TypeOf`] trait to identify the type of a prior at runtime:
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let prior: Prior = PointPrior::new(0.0).into();
+/// assert!(prior.is_point());
+/// assert_eq!(prior.type_of(), PriorFamily::Point);
+/// ```
 #[enum_dispatch(Normalize, PriorFn, PriorValidate, PriorRange)]
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum Prior {
+    /// Normal (Gaussian) prior distribution.
     Normal(NormalPrior),
+    /// Point mass prior (Dirac delta) for null hypotheses.
     Point(PointPrior),
+    /// Cauchy prior distribution (heavy tails).
     Cauchy(CauchyPrior),
+    /// Uniform prior distribution over an interval.
     Uniform(UniformPrior),
+    /// Student's t prior distribution.
     StudentT(StudentTPrior),
+    /// Beta prior distribution for probabilities.
     Beta(BetaPrior),
 }
 
@@ -272,8 +460,32 @@ impl Range for Prior {
     }
 }
 
+/// Trait for runtime type identification of prior distributions.
+///
+/// This trait allows querying the type of a prior at runtime, which is useful
+/// for special handling of certain prior types (e.g., point priors).
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// assert_eq!(prior.type_of(), PriorFamily::Normal);
+/// assert!(!prior.is_point());
+///
+/// let point: Prior = PointPrior::new(0.0).into();
+/// assert_eq!(point.type_of(), PriorFamily::Point);
+/// assert!(point.is_point());
+/// ```
 pub trait TypeOf {
+    /// Returns the family (type) of this prior distribution.
     fn type_of(&self) -> PriorFamily;
+
+    /// Returns true if this is a point prior (Dirac delta).
+    ///
+    /// Point priors require special handling during integration since they
+    /// represent a single value rather than a continuous distribution.
     fn is_point(&self) -> bool;
 }
 

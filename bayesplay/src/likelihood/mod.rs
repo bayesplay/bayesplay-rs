@@ -1,3 +1,34 @@
+//! Likelihood distributions for Bayesian inference.
+//!
+//! This module provides various likelihood functions that represent the probability
+//! of observing data given parameter values. Likelihoods are combined with priors
+//! to compute posterior distributions.
+//!
+//! # Available Likelihoods
+//!
+//! | Type | Use Case | Parameters |
+//! |------|----------|------------|
+//! | [`NormalLikelihood`] | Continuous data with known SE | mean, se |
+//! | [`BinomialLikelihood`] | Count data | successes, trials |
+//! | [`StudentTLikelihood`] | t-distributed data | mean, sd, df |
+//! | [`NoncentralDLikelihood`] | One-sample effect size | d, n |
+//! | [`NoncentralD2Likelihood`] | Two-sample effect size | d, n1, n2 |
+//! | [`NoncentralTLikelihood`] | Noncentral t data | t, df |
+//!
+//! # Examples
+//!
+//! ```rust
+//! use bayesplay::prelude::*;
+//!
+//! // Create different types of likelihoods
+//! let normal = NormalLikelihood::new(0.5, 0.2);
+//! let binomial = BinomialLikelihood::new(7.0, 10.0);
+//! let student_t = StudentTLikelihood::new(2.5, 1.0, 29.0);
+//!
+//! // Convert to the Likelihood enum for use with models
+//! let likelihood: Likelihood = normal.into();
+//! ```
+
 use enum_dispatch::enum_dispatch;
 use thiserror::Error;
 
@@ -20,6 +51,33 @@ pub use student_t::StudentTLikelihood;
 
 use serde::{Deserialize, Serialize};
 
+/// Errors that can occur when working with likelihood functions.
+///
+/// This enum covers all validation errors for likelihood parameters across
+/// all likelihood types. When multiple validation errors occur, they are
+/// collected into a [`LikelihoodError::MultipleErrors`] variant.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Invalid standard error
+/// let invalid = NormalLikelihood { mean: 0.0, se: -1.0 };
+/// match invalid.validate() {
+///     Err(LikelihoodError::InvalidSE(se)) => assert_eq!(se, -1.0),
+///     _ => panic!("Expected InvalidSE error"),
+/// }
+///
+/// // Multiple errors
+/// let invalid = BinomialLikelihood { successes: 15.0, trials: 0.5 };
+/// match invalid.validate() {
+///     Err(LikelihoodError::MultipleErrors(errors)) => {
+///         assert!(errors.len() >= 2);
+///     }
+///     _ => panic!("Expected multiple errors"),
+/// }
+/// ```
 #[derive(Error, Debug, Serialize, Deserialize)]
 pub enum LikelihoodError {
     #[error("SD value of {0} is invalid. SD must be positive")]
@@ -62,10 +120,39 @@ impl LikelihoodError {
     }
 }
 
-/// Trait for likelihood observation management (used by enum_dispatch)
+/// Trait for managing observed data in likelihood functions.
+///
+/// This trait allows retrieving and updating the observed value in a likelihood.
+/// It is used internally for computing predictive distributions, where the
+/// observation is varied across a range of values.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let mut likelihood = NormalLikelihood::new(0.5, 0.2);
+///
+/// // Get the current observation (the mean)
+/// assert_eq!(likelihood.get_observation(), Some(0.5));
+///
+/// // Update to a new observed value
+/// likelihood.update_observation(1.0);
+/// assert_eq!(likelihood.get_observation(), Some(1.0));
+/// ```
 #[enum_dispatch]
 pub trait Observation {
+    /// Updates the observed data value.
+    ///
+    /// The meaning of "observation" depends on the likelihood type:
+    /// - `NormalLikelihood`: the mean
+    /// - `BinomialLikelihood`: the number of successes
+    /// - `NoncentralDLikelihood`/`NoncentralD2Likelihood`: the effect size d
+    /// - `StudentTLikelihood`: the mean
+    /// - `NoncentralTLikelihood`: the t statistic
     fn update_observation(&mut self, observation: f64);
+
+    /// Returns the current observed data value.
     fn get_observation(&self) -> Option<f64>;
 }
 
@@ -154,14 +241,67 @@ impl LikelihoodValidate for NoncentralTLikelihood {
     }
 }
 
+/// A likelihood function for Bayesian inference.
+///
+/// This enum wraps all available likelihood types, allowing them to be used
+/// polymorphically with prior distributions to form models.
+///
+/// # Creating Likelihoods
+///
+/// Likelihoods are typically created using the specific type's constructor,
+/// then converted to the enum using `.into()`:
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Create specific likelihood types
+/// let normal = NormalLikelihood::new(0.5, 0.2);
+/// let binomial = BinomialLikelihood::new(7.0, 10.0);
+///
+/// // Convert to Likelihood enum
+/// let likelihood: Likelihood = normal.into();
+/// ```
+///
+/// # Combining with Priors
+///
+/// Likelihoods are combined with priors using multiplication to create models:
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+///
+/// // Create a model
+/// let model: Model = likelihood * prior;
+/// ```
+///
+/// # Evaluating Likelihoods
+///
+/// Use the [`Function`] trait to evaluate the likelihood at parameter values:
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+///
+/// // Evaluate the likelihood at different parameter values
+/// let value = likelihood.function(0.5).unwrap();
+/// ```
 #[enum_dispatch(Observation, LikelihoodFn, LikelihoodValidate)]
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
 pub enum Likelihood {
+    /// Normal (Gaussian) likelihood for continuous data with known standard error.
     Normal(NormalLikelihood),
+    /// Binomial likelihood for count data (successes out of trials).
     Binomial(BinomialLikelihood),
+    /// Student's t likelihood for t-distributed data.
     StudentT(StudentTLikelihood),
+    /// Noncentral d likelihood for one-sample effect sizes.
     NoncentralD(NoncentralDLikelihood),
+    /// Noncentral d likelihood for two-sample effect sizes.
     NoncentralD2(NoncentralD2Likelihood),
+    /// Noncentral t likelihood.
     NoncentralT(NoncentralTLikelihood),
 }
 
