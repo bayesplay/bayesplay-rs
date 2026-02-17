@@ -19,7 +19,7 @@ mod basic_examples {
     fn bayes_factor(likelihood: Likelihood, alt_prior: Prior, null_prior: Prior) -> f64 {
         let m1 = (likelihood * alt_prior).integral().unwrap();
         let m0 = (likelihood * null_prior).integral().unwrap();
-        m1/ m0
+        m1 / m0
     }
 
     #[test]
@@ -752,6 +752,7 @@ mod r_basic_calculations {
     //! All expected values come from the R package which is the gold standard.
     //! Tolerance: epsilon = 0.005 for BF comparisons.
 
+    use crate::compute::model::IntegralError;
     use crate::prelude::*;
     use approx::assert_relative_eq;
 
@@ -760,6 +761,16 @@ mod r_basic_calculations {
         let m1 = (likelihood * alt_prior).integral().unwrap();
         let m0 = (likelihood * null_prior).integral().unwrap();
         m1 / m0
+    }
+
+    fn bayes_factor_result(
+        likelihood: Likelihood,
+        alt_prior: Prior,
+        null_prior: Prior,
+    ) -> Result<f64, IntegralError> {
+        let m1 = (likelihood * alt_prior).integral()?;
+        let m0 = (likelihood * null_prior).integral()?;
+        Ok(m1 / m0)
     }
 
     // ── Binomial tests ─────────────────────────────────────────────────
@@ -849,7 +860,6 @@ mod r_basic_calculations {
         assert_relative_eq!(bf, 460.25, epsilon = 5.0);
     }
 
-    #[ignore = "approximation not implemented"]
     #[test]
     fn test_noncentral_d_negative_half_cauchy() {
         // R: NoncentralD(-2.24, 34) + half-Cauchy(0, 0.707, [0, Inf]) vs Point(0)
@@ -858,8 +868,9 @@ mod r_basic_calculations {
         let null_prior: Prior = PointPrior::new(0.0).into();
         let alt_prior: Prior = CauchyPrior::new(0.0, 0.707, (Some(0.0), None)).into();
 
-        let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.006773, epsilon = 0.001);
+        let bf = bayes_factor_result(likelihood, alt_prior, null_prior);
+        assert_eq!(bf.map_err(|e| e.to_string()), Err(IntegralError::Approximation.to_string()))
+        // assert_relative_eq!(bf, 0.006773, epsilon = 0.001);
     }
 
     #[test]

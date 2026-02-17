@@ -107,6 +107,120 @@ pub enum IntegralError {
     /// The numerical integration algorithm failed.
     #[error("Error with integration: {0}")]
     Integration(rmath::integration::IntegrationError),
+    #[error("Have to approximate")]
+    Approximation,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub(crate) struct ApproximateModel {
+    pub approximation: bool,
+    supported_prior: bool,
+    is_large: bool,
+    n: Option<f64>,
+    t: f64,
+    df: f64,
+}
+
+impl Default for ApproximateModel {
+    fn default() -> Self {
+        ApproximateModel {
+            approximation: false,
+            supported_prior: false,
+            is_large: false,
+            n: None,
+            t: 0.0,
+            df: 0.0,
+        }
+    }
+}
+
+impl ApproximateModel {
+    /// Returns true if approximation is needed
+    pub fn needs_approximation(&self) -> bool {
+        self.approximation
+    }
+
+    /// Returns true if the prior is supported for approximation
+    pub fn has_supported_prior(&self) -> bool {
+        self.supported_prior
+    }
+
+    /// Returns true if the test statistic is large (|t| > 5)
+    pub fn is_large_statistic(&self) -> bool {
+        self.is_large
+    }
+
+    /// Creates a new builder for constructing an ApproximateModel
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use bayesplay::compute::model::ApproximateModel;
+    ///
+    /// let model = ApproximateModel::builder()
+    ///     .approximation(true)
+    ///     .supported_prior(true)
+    ///     .t(10.0)
+    ///     .df(20.0)
+    ///     .build();
+    /// ```
+    pub fn builder() -> ApproximateModel {
+        ApproximateModel::default()
+    }
+
+    /// Sets whether approximation is needed
+    pub fn approximation(mut self, approximation: bool) -> Self {
+        self.approximation = approximation;
+        self
+    }
+
+    /// Sets whether the prior is supported for approximation
+    pub fn supported_prior(mut self, supported_prior: bool) -> Self {
+        self.supported_prior = supported_prior;
+        self
+    }
+
+    /// Sets whether the test statistic is large (|t| > 5)
+    pub fn is_large(mut self, is_large: bool) -> Self {
+        self.is_large = is_large;
+        self
+    }
+
+    /// Sets the sample size (optional)
+    pub fn n(mut self, n: Option<f64>) -> Self {
+        self.n = n;
+        self
+    }
+
+    /// Sets the test statistic value
+    pub fn t(mut self, t: f64) -> Self {
+        self.t = t;
+        self
+    }
+
+    /// Sets the degrees of freedom
+    pub fn df(mut self, df: f64) -> Self {
+        self.df = df;
+        self
+    }
+
+    /// Builds the ApproximateModel
+    pub fn build(self) -> ApproximateModel {
+        ApproximateModel {
+            approximation: self.approximation,
+            supported_prior: self.supported_prior,
+            is_large: self.is_large,
+            n: self.n,
+            t: self.t,
+            df: self.df,
+        }
+    }
+}
+
+impl From<ApproximateModel> for bool {
+    fn from(model: ApproximateModel) -> bool {
+        model.approximation
+    }
 }
 
 impl Model {
@@ -188,6 +302,59 @@ impl Model {
         Predictive(*self)
     }
 
+    pub(crate) fn is_approximation(&self) -> ApproximateModel {
+        const SUPPORTED_PRIORS: [PriorFamily; 1] = [PriorFamily::Cauchy];
+        const SUPPORTED_LIKELIHOODS: [LikelihoodFamily; 3] = [
+            LikelihoodFamily::NoncentralD,
+            LikelihoodFamily::NoncentralD2,
+            LikelihoodFamily::NoncentralT,
+        ];
+
+        let prior_family = self.prior.family();
+        let likelihood_family = self.likelihood.family();
+
+        let supported = SUPPORTED_LIKELIHOODS.contains(&likelihood_family)
+            && SUPPORTED_PRIORS.contains(&prior_family);
+
+        if !supported {
+            return ApproximateModel::builder().supported_prior(false);
+        }
+
+        let (t_likelihood, n, df) = match self.likelihood {
+            Likelihood::NoncentralD(likelihood) => {
+                let (t, n) = likelihood.into_t();
+                (t, n, t.df)
+            }
+            Likelihood::NoncentralD2(likelihood) => {
+                let (t, n) = likelihood.into_t();
+                (t, n, t.df)
+            }
+            Likelihood::NoncentralT(likelihood) => (likelihood, None, likelihood.df),
+            _ => unreachable!(),
+        };
+
+        let t_likelihood: Likelihood = t_likelihood.into();
+        let observation = t_likelihood.get_observation();
+        let t = observation.unwrap_or(0.0);
+        let abs_t = t.abs();
+
+        let prior_limits = self.prior.range_or_default();
+        let in_range = observation >= Some(prior_limits.0) && observation <= Some(prior_limits.1);
+
+        let more_than_15 = abs_t > 15.0;
+        let more_than_5 = abs_t > 5.0;
+
+        let needs_approximation = more_than_15 || (more_than_5 && !in_range);
+
+        ApproximateModel::builder()
+            .approximation(needs_approximation)
+            .supported_prior(supported)
+            .is_large(more_than_15 || more_than_5)
+            .n(n)
+            .t(t)
+            .df(df)
+            .build()
+    }
 }
 
 impl Range for Model {
@@ -233,6 +400,9 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
         prior.validate()?;
         likelihood.validate()?;
 
+        if self.is_approximation().needs_approximation() {
+            return Err(IntegralError::Approximation);
+        }
 
         match prior {
             Prior::Point(point) => {
