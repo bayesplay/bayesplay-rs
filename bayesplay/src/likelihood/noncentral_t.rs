@@ -3,7 +3,7 @@
 use rmath::dt;
 use serde::{Deserialize, Serialize};
 
-use super::{Likelihood, LikelihoodError, Observation};
+use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
 
@@ -14,12 +14,10 @@ pub struct NoncentralTLikelihood {
 }
 
 impl NoncentralTLikelihood {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(t: f64, df: f64) -> Likelihood {
-        Likelihood::NoncentralT(NoncentralTLikelihood { t, df })
+    pub fn new(t: f64, df: f64) -> Self {
+        NoncentralTLikelihood { t, df }
     }
 }
-
 
 /// # Examples
 ///

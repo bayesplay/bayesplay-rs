@@ -7,15 +7,13 @@ pub struct NoncentralDLikelihood {
     pub n: f64,
 }
 
-use super::{Likelihood, LikelihoodError, Observation};
+use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
 
 // use super::NoncentralTLikelihood;
 
-
 impl NoncentralDLikelihood {
-    #[allow(clippy::new_ret_no_self)]
     /// Creates a new `NoncentralDLikelihood` instance.
     ///
     /// # Examples
@@ -24,6 +22,7 @@ impl NoncentralDLikelihood {
     /// use bayesplay::prelude::*;
     ///
     /// let likelihood = NoncentralDLikelihood::new(2.5, 10.0);
+    /// let likelihood: Likelihood = likelihood.into();
     /// match likelihood {
     ///     Likelihood::NoncentralD(noncentral_d) => {
     ///         assert_eq!(noncentral_d.d, 2.5);
@@ -32,32 +31,32 @@ impl NoncentralDLikelihood {
     ///     _ => panic!("Expected NoncentralD variant"),
     /// }
     /// ```
-    pub fn new(d: f64, n: f64) -> Likelihood {
-        Likelihood::NoncentralD(NoncentralDLikelihood { d, n })
+    pub fn new(d: f64, n: f64) -> Self {
+        NoncentralDLikelihood { d, n }
     }
-
-    // TODO: This is needed for approximation
-    // pub fn get_tvalue(&self) -> (f64, f64, f64) {
-    //     let n = self.n;
-    //     let d = self.d;
-    //
-    //     let t = d * n.sqrt();
-    //     let df = n - 1.0;
-    //
-    //     (t, df, n)
-    // }
-    //
-    // pub fn into_t(&self) -> (Likelihood, f64) {
-    //     let (t, df, n) = self.get_tvalue();
-    //     (NoncentralTLikelihood::new(t, df), n)
-    // }
-    //
-    // pub fn new_checked(d: f64, n: f64) -> Result<Likelihood, LikelihoodError> {
-    //     let likelihood = NoncentralDLikelihood { d, n };
-    //     likelihood.validate()?;
-    //     Ok(Likelihood::NoncentralD(likelihood))
-    // }
 }
+
+// TODO: This is needed for approximation
+// pub fn get_tvalue(&self) -> (f64, f64, f64) {
+//     let n = self.n;
+//     let d = self.d;
+//
+//     let t = d * n.sqrt();
+//     let df = n - 1.0;
+//
+//     (t, df, n)
+// }
+//
+// pub fn into_t(&self) -> (Likelihood, f64) {
+//     let (t, df, n) = self.get_tvalue();
+//     (NoncentralTLikelihood::new(t, df), n)
+// }
+//
+// pub fn new_checked(d: f64, n: f64) -> Result<Likelihood, LikelihoodError> {
+//     let likelihood = NoncentralDLikelihood { d, n };
+//     likelihood.validate()?;
+//     Ok(Likelihood::NoncentralD(likelihood))
+// }
 
 impl Function<f64, f64, LikelihoodError> for NoncentralDLikelihood {
     /// Evaluates the noncentral D likelihood function.

@@ -2,7 +2,7 @@ use rmath::dt;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Likelihood, LikelihoodError, Observation};
+use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
 
@@ -26,21 +26,14 @@ impl StudentTLikelihood {
     /// let df = 10.0;
     /// let likelihood = StudentTLikelihood::new(mean, sd, df);
     ///
-    /// match likelihood {
-    ///     Likelihood::StudentT(student_t) => {
-    ///         assert_eq!(student_t.mean, mean);
-    ///         assert_eq!(student_t.sd, sd);
-    ///         assert_eq!(student_t.df, df);
-    ///     }
-    ///     _ => panic!("Expected a StudentT likelihood"),
-    /// }
+    /// assert_eq!(likelihood.mean, mean);
+    /// assert_eq!(likelihood.sd, sd);
+    /// assert_eq!(likelihood.df, df);
     /// ```
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(mean: f64, sd: f64, df: f64) -> Likelihood {
-        Likelihood::StudentT(StudentTLikelihood { mean, sd, df })
+    pub fn new(mean: f64, sd: f64, df: f64) -> Self {
+        StudentTLikelihood { mean, sd, df }
     }
 }
-
 
 impl Validate<LikelihoodError> for StudentTLikelihood {
     /// Validates the `StudentTLikelihood` parameters.
@@ -60,18 +53,20 @@ impl Validate<LikelihoodError> for StudentTLikelihood {
     /// assert!(matches!(invalid_df.validate(), Err(LikelihoodError::InvalidDF(_))));
     ///
     /// let both_invalid = StudentTLikelihood { mean: 0.0, sd: -1.0, df: -5.0 };
-    /// assert!(matches!(both_invalid.validate(), Err(LikelihoodError::MultiError2(_, _))));
+    /// assert!(matches!(both_invalid.validate(), Err(LikelihoodError::MultipleErrors(_))));
     /// ```
     fn validate(&self) -> Result<(), LikelihoodError> {
-        match (self.sd <= 0.0, self.df <= 0.0) {
-            (true, false) => Err(LikelihoodError::InvalidSD(self.sd)),
-            (false, true) => Err(LikelihoodError::InvalidDF(self.df)),
-            (true, true) => Err(LikelihoodError::MultiError2(
-                Box::new(LikelihoodError::InvalidSD(self.sd)),
-                Box::new(LikelihoodError::InvalidDF(self.df)),
-            )),
-            (false, false) => Ok(()),
+        let mut errors = Vec::new();
+
+        if self.sd <= 0.0 {
+            errors.push(LikelihoodError::InvalidSD(self.sd));
         }
+
+        if self.df <= 0.0 {
+            errors.push(LikelihoodError::InvalidDF(self.df));
+        }
+
+        LikelihoodError::from_errors(errors)
     }
 }
 

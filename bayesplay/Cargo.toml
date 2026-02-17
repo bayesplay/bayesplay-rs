@@ -10,4 +10,5 @@ serde = {version = "1.0.197", features = ["derive"]}
 thiserror = "1.0.58"
 anyhow = "1.0.81"
 approx = "0.5.1"
+enum_dispatch = "0.3"
 
