@@ -7,9 +7,46 @@ use crate::common::Validate;
 use crate::likelihood::LikelihoodError;
 use crate::likelihood::Observation;
 
+/// A binomial likelihood function for count data.
+///
+/// This likelihood is appropriate when the data represent the number of
+/// successes out of a fixed number of trials, such as coin flips, survey
+/// responses, or clinical trial outcomes.
+///
+/// The likelihood function evaluates the probability of observing the given
+/// number of successes given a probability parameter p.
+///
+/// # Parameters
+///
+/// * `successes` - The number of successful outcomes (must be a non-negative integer ≤ trials)
+/// * `trials` - The total number of trials (must be a positive integer)
+///
+/// # Mathematical Form
+///
+/// L(p) = C(n, k) * p^k * (1-p)^(n-k)
+///
+/// where n = trials, k = successes, and C(n,k) is the binomial coefficient.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // 7 successes out of 10 trials
+/// let likelihood = BinomialLikelihood::new(7.0, 10.0);
+///
+/// // Evaluate the likelihood at p = 0.5
+/// let value = likelihood.function(0.5).unwrap();
+///
+/// // Combine with a Beta prior (conjugate for binomial)
+/// let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
+/// let model: Model = Likelihood::from(likelihood) * prior;
+/// ```
 #[derive(Default, Clone, Copy, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
 pub struct BinomialLikelihood {
+    /// The number of successful outcomes.
     pub successes: f64,
+    /// The total number of trials.
     pub trials: f64,
 }
 

@@ -44,7 +44,7 @@ pub fn dbinom(x: f64, size: f64, prob: f64, log: bool) -> Result<f64, &'static s
         .map_err(|_| "Error creating Binomial distribution")?;
 
     match log {
-        true => Ok(dist.pmf(x as u64).ln()),
+        true => Ok(dist.ln_pmf(x as u64)),
         false => Ok(dist.pmf(x as u64)),
     }
 }
@@ -94,4 +94,3 @@ pub fn safe_pbinom(args: Pbinom) -> Result<f64, &'static str> {
             .ok_or("argument \"log_p\" is missing, with no default")?,
     )
 }
-

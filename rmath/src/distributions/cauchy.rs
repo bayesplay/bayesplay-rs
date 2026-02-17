@@ -90,4 +90,3 @@ pub fn safe_pcauchy(args: Pcauchy) -> Result<f64, &'static str> {
             .ok_or("argument \"log_p\" is missing, with no default")?,
     )
 }
-

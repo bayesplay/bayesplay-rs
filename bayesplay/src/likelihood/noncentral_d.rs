@@ -1,15 +1,51 @@
 use rmath::dt;
 use serde::{Deserialize, Serialize};
 
+/// A noncentral d likelihood for one-sample effect sizes (Cohen's d).
+///
+/// This likelihood is used when the observed data is a standardized effect size
+/// from a one-sample design. The effect size d is related to the t-statistic
+/// and sample size, and follows a noncentral t-distribution.
+///
+/// # Parameters
+///
+/// * `d` - The observed effect size (Cohen's d)
+/// * `n` - The sample size (must be ≥ 1)
+///
+/// # Relationship to t-statistic
+///
+/// For a one-sample design:
+/// - t = d × √n
+/// - df = n - 1
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Effect size d = 0.5 from a sample of 30
+/// let likelihood = NoncentralDLikelihood::new(0.5, 30.0);
+///
+/// // Combine with a Cauchy prior on effect size
+/// let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
+/// let model: Model = Likelihood::from(likelihood) * prior;
+///
+/// // Compute the marginal likelihood
+/// let marginal = model.integral().unwrap();
+/// ```
 #[derive(Default, Clone, Copy, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
 pub struct NoncentralDLikelihood {
+    /// The observed effect size (Cohen's d).
     pub d: f64,
+    /// The sample size.
     pub n: f64,
 }
 
 use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
+use crate::prelude::Likelihood;
+use crate::prelude::NoncentralTLikelihood;
 
 // use super::NoncentralTLikelihood;
 
@@ -34,23 +70,22 @@ impl NoncentralDLikelihood {
     pub fn new(d: f64, n: f64) -> Self {
         NoncentralDLikelihood { d, n }
     }
-}
 
-// TODO: This is needed for approximation
-// pub fn get_tvalue(&self) -> (f64, f64, f64) {
-//     let n = self.n;
-//     let d = self.d;
-//
-//     let t = d * n.sqrt();
-//     let df = n - 1.0;
-//
-//     (t, df, n)
-// }
-//
-// pub fn into_t(&self) -> (Likelihood, f64) {
-//     let (t, df, n) = self.get_tvalue();
-//     (NoncentralTLikelihood::new(t, df), n)
-// }
+    pub fn get_tvalue(&self) -> (f64, f64, f64) {
+        let n = self.n;
+        let d = self.d;
+
+        let t = d * n.sqrt();
+        let df = n - 1.0;
+
+        (t, df, n)
+    }
+
+    pub fn into_t(&self) -> (NoncentralTLikelihood, Option<f64>) {
+        let (t, df, n) = self.get_tvalue();
+        (NoncentralTLikelihood::new(t, df), Some(n))
+    }
+}
 //
 // pub fn new_checked(d: f64, n: f64) -> Result<Likelihood, LikelihoodError> {
 //     let likelihood = NoncentralDLikelihood { d, n };

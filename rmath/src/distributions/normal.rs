@@ -93,4 +93,3 @@ pub fn safe_pnorm(args: Pnorm) -> Result<f64, &'static str> {
             .ok_or("argument \"give_log\" is missing, with no default")?,
     )
 }
-

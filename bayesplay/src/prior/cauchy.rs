@@ -10,14 +10,72 @@ use crate::common::Function;
 use crate::common::Range;
 use crate::common::Validate;
 
+/// A Cauchy distribution prior with customizable parameters.
+///
+/// The Cauchy distribution has heavier tails than the normal distribution,
+/// making it appropriate for priors where extreme values should not be
+/// ruled out too strongly. A common choice is the "medium" Cauchy prior
+/// with location=0 and scale=0.707 (≈1/√2).
+///
+/// # Parameters
+///
+/// * `location` - The location parameter (mode/median of the distribution)
+/// * `scale` - The scale parameter (half-width at half-maximum, must be positive)
+/// * `range` - Optional bounds for truncation as (lower, upper)
+///
+/// # Mathematical Form
+///
+/// The Cauchy PDF is:
+///
+/// f(x) = 1 / (π × scale × (1 + ((x - location) / scale)²))
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Standard Cauchy prior (location=0, scale=1)
+/// let standard = CauchyPrior::new(0.0, 1.0, (None, None));
+///
+/// // "Medium" Cauchy prior commonly used for effect sizes
+/// let medium = CauchyPrior::new(0.0, 0.707, (None, None));
+///
+/// // Half-Cauchy (positive values only) - useful for scale parameters
+/// let half_cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+///
+/// // Bounded Cauchy
+/// let bounded = CauchyPrior::new(0.0, 0.707, (Some(-2.0), Some(2.0)));
+/// ```
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub struct CauchyPrior {
+    /// The location parameter (mode/median).
     pub location: f64,
+    /// The scale parameter (half-width at half-maximum).
     pub scale: f64,
+    /// Optional truncation bounds as (lower, upper).
     pub range: (Option<f64>, Option<f64>),
 }
 
 impl CauchyPrior {
+    /// Creates a new Cauchy distribution prior.
+    ///
+    /// # Arguments
+    ///
+    /// * `location` - The location parameter (mode/median)
+    /// * `scale` - The scale parameter (must be positive)
+    /// * `range` - Optional bounds as (lower_bound, upper_bound)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use bayesplay::prelude::*;
+    ///
+    /// // Unbounded Cauchy
+    /// let cauchy = CauchyPrior::new(0.0, 0.707, (None, None));
+    ///
+    /// // Half-Cauchy (positive values only)
+    /// let half_cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+    /// ```
     pub fn new(location: f64, scale: f64, range: (Option<f64>, Option<f64>)) -> Self {
         CauchyPrior {
             location,
@@ -27,7 +85,29 @@ impl CauchyPrior {
     }
 }
 
-// FIXME: This should return multiple errors if necessary
+/// Validates the parameters of the Cauchy prior.
+///
+/// Ensures:
+/// 1. The scale parameter is positive
+/// 2. The range bounds are not equal (except for default infinite bounds)
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Valid parameters
+/// let valid = CauchyPrior::new(0.0, 0.707, (None, None));
+/// assert!(valid.validate().is_ok());
+///
+/// // Invalid: negative scale
+/// let invalid = CauchyPrior::new(0.0, -1.0, (None, None));
+/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidScale(_))));
+///
+/// // Invalid: equal bounds
+/// let invalid = CauchyPrior::new(0.0, 1.0, (Some(0.0), Some(0.0)));
+/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidRange)));
+/// ```
 impl Validate<PriorError> for CauchyPrior {
     fn validate(&self) -> Result<(), PriorError> {
         if self.scale <= 0.0 {
@@ -41,6 +121,7 @@ impl Validate<PriorError> for CauchyPrior {
     }
 }
 
+/// Implementation of the Range trait for CauchyPrior.
 impl Range for CauchyPrior {
     fn range(&self) -> (Option<f64>, Option<f64>) {
         self.range
@@ -51,6 +132,24 @@ impl Range for CauchyPrior {
     }
 }
 
+/// Implementation of normalization for the CauchyPrior.
+///
+/// For unbounded Cauchy distributions, returns 1.0. For truncated distributions,
+/// calculates the probability mass within the truncation bounds.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// // Unbounded Cauchy has normalization constant of 1
+/// let unbounded = CauchyPrior::new(0.0, 1.0, (None, None));
+/// assert_eq!(unbounded.normalize().unwrap(), 1.0);
+///
+/// // Half-Cauchy (positive values) has normalization constant of 0.5
+/// let half_cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+/// assert!((half_cauchy.normalize().unwrap() - 0.5).abs() < 0.001);
+/// ```
 impl Normalize for CauchyPrior {
     fn normalize(&self) -> Result<f64, PriorError> {
         let (lower, upper) = self.range_or_default();
@@ -71,6 +170,26 @@ impl Normalize for CauchyPrior {
     }
 }
 
+/// Implementation of the Function trait for evaluating the Cauchy PDF.
+///
+/// For truncated distributions, returns 0 outside the bounds and applies
+/// proper normalization within the bounds.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+/// use std::f64::consts::PI;
+///
+/// // Standard Cauchy PDF at x=0 should be 1/π
+/// let cauchy = CauchyPrior::new(0.0, 1.0, (None, None));
+/// let density = cauchy.function(0.0).unwrap();
+/// assert!((density - 1.0/PI).abs() < 1e-10);
+///
+/// // Truncated Cauchy: value outside bounds returns 0
+/// let truncated = CauchyPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
+/// assert_eq!(truncated.function(5.0).unwrap(), 0.0);
+/// ```
 impl Function<f64, f64, PriorError> for CauchyPrior {
     fn function(&self, x: f64) -> Result<f64, PriorError> {
         self.validate()?;
@@ -91,5 +210,130 @@ impl Function<f64, f64, PriorError> for CauchyPrior {
         Ok(dcauchy!(x = x, location = location, scale = scale)
             .map_err(PriorError::DistributionError)?
             / k)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prior::Prior;
+    use approx::assert_relative_eq;
+    use std::f64::consts::PI;
+
+    // ---- Tests from R's test-priors.R ----
+
+    #[test]
+    fn test_cauchy_density_at_zero() {
+        // R: prior("cauchy", 0, 1) at 0 == dcauchy(0, 0, 1)
+        // dcauchy(0, 0, 1) = 1/π
+        let cauchy = CauchyPrior::new(0.0, 1.0, (None, None));
+        let density = cauchy.function(0.0).unwrap();
+        let expected = 1.0 / PI; // dcauchy(0, 0, 1) = 1/π ≈ 0.3183099
+        assert_relative_eq!(density, expected, epsilon = 5e-7);
+    }
+
+    #[test]
+    fn test_cauchy_density_at_offset() {
+        // R: prior("cauchy", 2, 2) at 4 == dcauchy(4, 2, 2)
+        // dcauchy(4, 2, 2) = 1 / (π * 2 * (1 + ((4-2)/2)^2)) = 1 / (π * 2 * 2) = 1/(4π)
+        let cauchy = CauchyPrior::new(2.0, 2.0, (None, None));
+        let density = cauchy.function(4.0).unwrap();
+        let expected = 1.0 / (PI * 2.0 * (1.0 + ((4.0 - 2.0) / 2.0_f64).powi(2)));
+        assert_relative_eq!(density, expected, epsilon = 5e-7);
+    }
+
+    #[test]
+    fn test_half_cauchy_density_at_zero() {
+        // R: prior("cauchy", 0, 1, c(0, Inf)) at 0 == dcauchy(0, 0, 1) * 2
+        let half_cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+        let density = half_cauchy.function(0.0).unwrap();
+        let expected = (1.0 / PI) * 2.0; // dcauchy(0, 0, 1) * 2
+        assert_relative_eq!(density, expected, epsilon = 5e-7);
+    }
+
+    #[test]
+    fn test_half_cauchy_density_outside_range() {
+        // R: prior("cauchy", 0, 1, c(0, Inf)) at -1 == 0
+        let half_cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+        let density = half_cauchy.function(-1.0).unwrap();
+        assert_eq!(density, 0.0);
+    }
+
+    // ---- Creation and validation tests ----
+
+    #[test]
+    fn test_cauchy_prior_creation() {
+        let prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
+        if let Prior::Cauchy(p) = prior {
+            assert_eq!(p.location, 0.0);
+            assert_eq!(p.scale, 1.0);
+            assert_eq!(p.range, (None, None));
+        } else {
+            panic!("Expected Cauchy prior");
+        }
+    }
+
+    #[test]
+    fn test_cauchy_prior_validation_valid() {
+        let cauchy = CauchyPrior::new(0.0, 0.707, (None, None));
+        assert!(cauchy.validate().is_ok());
+    }
+
+    #[test]
+    fn test_cauchy_prior_validation_negative_scale() {
+        let cauchy = CauchyPrior::new(0.0, -1.0, (None, None));
+        assert!(matches!(
+            cauchy.validate(),
+            Err(PriorError::InvalidScale(_))
+        ));
+    }
+
+    #[test]
+    fn test_cauchy_prior_validation_zero_scale() {
+        let cauchy = CauchyPrior::new(0.0, 0.0, (None, None));
+        assert!(matches!(
+            cauchy.validate(),
+            Err(PriorError::InvalidScale(_))
+        ));
+    }
+
+    #[test]
+    fn test_cauchy_prior_validation_equal_range() {
+        let cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), Some(0.0)));
+        assert!(matches!(cauchy.validate(), Err(PriorError::InvalidRange)));
+    }
+
+    // ---- Normalization tests ----
+
+    #[test]
+    fn test_cauchy_normalization_unbounded() {
+        let cauchy = CauchyPrior::new(0.0, 1.0, (None, None));
+        assert_eq!(cauchy.normalize().unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_cauchy_normalization_half() {
+        let half_cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+        assert_relative_eq!(half_cauchy.normalize().unwrap(), 0.5, epsilon = 1e-10);
+    }
+
+    // ---- Range tests ----
+
+    #[test]
+    fn test_cauchy_range_behavior() {
+        let cauchy = CauchyPrior::new(0.0, 1.0, (None, None));
+        assert_eq!(cauchy.range(), (None, None));
+        assert!(cauchy.has_default_range());
+
+        let truncated = CauchyPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
+        assert_eq!(truncated.range(), (Some(-1.0), Some(1.0)));
+        assert!(!truncated.has_default_range());
+    }
+
+    #[test]
+    fn test_truncated_cauchy_outside_bounds() {
+        let truncated = CauchyPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
+        assert_eq!(truncated.function(5.0).unwrap(), 0.0);
+        assert_eq!(truncated.function(-5.0).unwrap(), 0.0);
     }
 }

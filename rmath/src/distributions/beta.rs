@@ -1,7 +1,14 @@
 use statrs::distribution::{Continuous, ContinuousCDF};
 
-pub fn pbeta(q: f64, shape1: f64, shape2: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
-    let dist = statrs::distribution::Beta::new(shape1, shape2).map_err(|_| "Error creating Beta distribution")?;
+pub fn pbeta(
+    q: f64,
+    shape1: f64,
+    shape2: f64,
+    lower_tail: bool,
+    log_p: bool,
+) -> Result<f64, &'static str> {
+    let dist = statrs::distribution::Beta::new(shape1, shape2)
+        .map_err(|_| "Error creating Beta distribution")?;
 
     match (lower_tail, log_p) {
         (true, true) => Ok(dist.cdf(q).ln()),
@@ -12,7 +19,8 @@ pub fn pbeta(q: f64, shape1: f64, shape2: f64, lower_tail: bool, log_p: bool) ->
 }
 
 pub fn dbeta(x: f64, shape1: f64, shape2: f64, log: bool) -> Result<f64, &'static str> {
-    let dist = statrs::distribution::Beta::new(shape1, shape2).map_err(|_| "Error creating Beta distribution")?;
+    let dist = statrs::distribution::Beta::new(shape1, shape2)
+        .map_err(|_| "Error creating Beta distribution")?;
     match log {
         true => Ok(dist.pdf(x).ln()),
         false => Ok(dist.pdf(x)),
@@ -73,7 +81,7 @@ pub fn safe_dbeta(args: Dbeta) -> Result<f64, &'static str> {
                 .ok_or("argument \"shape2\" is missing, with no default")?,
             args.log.ok_or("Error with log")?,
         ),
-        false => todo!()
+        false => todo!(),
     }
 }
 
@@ -89,7 +97,6 @@ pub fn safe_pbeta(args: Pbeta) -> Result<f64, &'static str> {
             args.lower_tail.ok_or("Error with lower_tail")?,
             args.log_p.ok_or("Error with log_p")?,
         ),
-        false => todo!()
+        false => todo!(),
     }
 }
-
