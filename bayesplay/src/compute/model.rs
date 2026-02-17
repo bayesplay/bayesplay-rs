@@ -188,63 +188,6 @@ impl Model {
         Predictive(*self)
     }
 
-    pub(crate) fn is_approximation(&self) -> ApproximateModel {
-        const SUPPORTED_PRIORS: [PriorFamily; 1] = [PriorFamily::Cauchy];
-        const SUPPORTED_LIKELIHOODS: [LikelihoodFamily; 3] = [
-            LikelihoodFamily::NoncentralD,
-            LikelihoodFamily::NoncentralD2,
-            LikelihoodFamily::NoncentralT,
-        ];
-
-        let prior_family = self.prior.family();
-        let likelihood_family = self.likelihood.family();
-
-        // Early return for unsupported combinations
-        if !SUPPORTED_LIKELIHOODS.contains(&likelihood_family)
-            || !SUPPORTED_PRIORS.contains(&prior_family)
-        {
-            return ApproximateModel::default();
-        }
-
-        // Convert likelihood to t-statistic form
-        let (t_likelihood, n, df) = match self.likelihood {
-            Likelihood::NoncentralD(likelihood) => {
-                let (t, n) = likelihood.into_t();
-                (t, n, t.df)
-            }
-            Likelihood::NoncentralD2(likelihood) => {
-                let (t, n) = likelihood.into_t();
-                (t, n, t.df)
-            }
-            Likelihood::NoncentralT(likelihood) => (likelihood, None, likelihood.df),
-            _ => unreachable!(),
-        };
-
-        let t_likelihood: Likelihood = t_likelihood.into();
-        let observation = t_likelihood.get_observation();
-        let abs_t = observation.map(|x| x.abs());
-
-        // Check if observation is within prior range
-        let prior_limits = self.prior.range_or_default();
-        let in_prior_range = observation
-            .map(|obs| obs >= prior_limits.0 && obs <= prior_limits.1)
-            .unwrap_or(false);
-
-        // Determine if approximation is needed based on t-value thresholds
-        let is_large = abs_t.map(|t| t > 5.0).unwrap_or(false);
-        let needs_approximation = abs_t
-            .map(|t| t > 15.0 || (t > 5.0 && !in_prior_range))
-            .unwrap_or(false);
-
-        ApproximateModel {
-            approximation: needs_approximation,
-            supported_prior: true,
-            is_large,
-            n,
-            t: observation.unwrap_or(0.0),
-            df,
-        }
-    }
 }
 
 impl Range for Model {
@@ -290,10 +233,6 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
         prior.validate()?;
         likelihood.validate()?;
 
-        let model = likelihood * prior;
-        if model.is_approximation().approximation {
-            return Err(IntegralError::Approximation);
-        }
 
         match prior {
             Prior::Point(point) => {
