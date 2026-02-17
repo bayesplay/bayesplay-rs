@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
+use crate::prelude::Likelihood;
+use crate::prelude::NoncentralTLikelihood;
 
 /// A noncentral d likelihood for two-sample effect sizes (Cohen's d).
 ///
@@ -72,25 +74,23 @@ impl NoncentralD2Likelihood {
     pub fn new(d: f64, n1: f64, n2: f64) -> Self {
         NoncentralD2Likelihood { d, n1, n2 }
     }
+
+    pub fn get_tvalue(&self) -> (f64, f64, f64) {
+        let n1 = self.n1;
+        let n2 = self.n2;
+        let d = self.d;
+
+        let n = (n1 * n2) / (n1 + n2);
+        let t = d * n.sqrt();
+        let df = n1 + n2 - 2.0;
+        (t, df, n)
+    }
+
+    pub fn into_t(&self) -> (NoncentralTLikelihood, Option<f64>) {
+        let (t, df, n) = self.get_tvalue();
+        (NoncentralTLikelihood::new(t, df), Some(n))
+    }
 }
-
-// TODO: Implement the function to get the t-value for approximations
-// pub fn get_tvalue(&self) -> (f64, f64, f64) {
-//     let n1 = self.n1;
-//     let n2 = self.n2;
-//     let d = self.d;
-//
-//     let n = (n1 * n2) / (n1 + n2);
-//     let t = d * n.sqrt();
-//     let df = n1 + n2 - 2.0;
-//     (t, df, n)
-// }
-//
-// pub fn into_t(&self) -> (Likelihood, f64) {
-//     let (t, df, n) = self.get_tvalue();
-//     (NoncentralTLikelihood::new(t, df), n)
-// }
-
 impl Function<f64, f64, LikelihoodError> for NoncentralD2Likelihood {
     /// Computes the likelihood function for the given input `x`.
     ///

@@ -212,3 +212,102 @@ impl Normalize for BetaPrior {
         Ok(1.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prior::Prior;
+    use approx::assert_relative_eq;
+
+    #[test]
+    fn test_beta_prior_creation() {
+        let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
+        if let Prior::Beta(p) = prior {
+            assert_eq!(p.alpha, 1.0);
+            assert_eq!(p.beta, 1.0);
+            assert_eq!(p.range, (None, None));
+        } else {
+            panic!("Expected Beta prior");
+        }
+    }
+
+    #[test]
+    fn test_beta_uniform_density() {
+        // Beta(1, 1) is uniform on [0,1], so density = 1.0 everywhere
+        let beta = BetaPrior::new(1.0, 1.0, (None, None));
+        assert_relative_eq!(beta.function(0.5).unwrap(), 1.0, epsilon = 1e-10);
+        assert_relative_eq!(beta.function(0.1).unwrap(), 1.0, epsilon = 1e-10);
+        assert_relative_eq!(beta.function(0.9).unwrap(), 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_beta_symmetric_mode() {
+        // Beta(2, 2) has mode at 0.5
+        let beta = BetaPrior::new(2.0, 2.0, (None, None));
+        let at_mode = beta.function(0.5).unwrap();
+        let off_mode = beta.function(0.3).unwrap();
+        assert!(at_mode > off_mode);
+    }
+
+    #[test]
+    fn test_beta_density_known_value() {
+        // Beta(2,5) at x=0.3: dbeta(0.3, 2, 5) ≈ 2.1609
+        // R: dbeta(0.3, 2, 5) = 2.1609
+        let beta = BetaPrior::new(2.0, 5.0, (None, None));
+        let density = beta.function(0.3).unwrap();
+        assert_relative_eq!(density, 2.1609, epsilon = 1e-3);
+    }
+
+    #[test]
+    fn test_beta_validation_valid() {
+        let beta = BetaPrior::new(1.0, 1.0, (None, None));
+        assert!(beta.validate().is_ok());
+    }
+
+    #[test]
+    fn test_beta_validation_negative_alpha() {
+        let beta = BetaPrior::new(-1.0, 1.0, (None, None));
+        assert!(matches!(
+            beta.validate(),
+            Err(PriorError::InvalidShapeParameter(_))
+        ));
+    }
+
+    #[test]
+    fn test_beta_validation_negative_beta() {
+        let beta = BetaPrior::new(1.0, -1.0, (None, None));
+        assert!(matches!(
+            beta.validate(),
+            Err(PriorError::InvalidShapeParameter(_))
+        ));
+    }
+
+    #[test]
+    fn test_beta_validation_invalid_range_bounds() {
+        let beta = BetaPrior::new(1.0, 1.0, (Some(-0.5), None));
+        assert!(matches!(
+            beta.validate(),
+            Err(PriorError::InvalidRangeBounds)
+        ));
+    }
+
+    #[test]
+    fn test_beta_value_outside_0_1() {
+        // function() should return InvalidValue for x outside [0, 1]
+        let beta = BetaPrior::new(1.0, 1.0, (None, None));
+        assert!(beta.function(1.5).is_err());
+        assert!(beta.function(-0.1).is_err());
+    }
+
+    #[test]
+    fn test_beta_normalization() {
+        let beta = BetaPrior::new(2.0, 5.0, (None, None));
+        assert_eq!(beta.normalize().unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_beta_default_range() {
+        let beta = BetaPrior::new(1.0, 1.0, (None, None));
+        assert_eq!(beta.default_range(), (0.0, 1.0));
+    }
+}

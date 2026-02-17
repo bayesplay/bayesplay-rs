@@ -44,6 +44,8 @@ pub struct NoncentralDLikelihood {
 use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
+use crate::prelude::Likelihood;
+use crate::prelude::NoncentralTLikelihood;
 
 // use super::NoncentralTLikelihood;
 
@@ -68,23 +70,22 @@ impl NoncentralDLikelihood {
     pub fn new(d: f64, n: f64) -> Self {
         NoncentralDLikelihood { d, n }
     }
-}
 
-// TODO: This is needed for approximation
-// pub fn get_tvalue(&self) -> (f64, f64, f64) {
-//     let n = self.n;
-//     let d = self.d;
-//
-//     let t = d * n.sqrt();
-//     let df = n - 1.0;
-//
-//     (t, df, n)
-// }
-//
-// pub fn into_t(&self) -> (Likelihood, f64) {
-//     let (t, df, n) = self.get_tvalue();
-//     (NoncentralTLikelihood::new(t, df), n)
-// }
+    pub fn get_tvalue(&self) -> (f64, f64, f64) {
+        let n = self.n;
+        let d = self.d;
+
+        let t = d * n.sqrt();
+        let df = n - 1.0;
+
+        (t, df, n)
+    }
+
+    pub fn into_t(&self) -> (NoncentralTLikelihood, Option<f64>) {
+        let (t, df, n) = self.get_tvalue();
+        (NoncentralTLikelihood::new(t, df), Some(n))
+    }
+}
 //
 // pub fn new_checked(d: f64, n: f64) -> Result<Likelihood, LikelihoodError> {
 //     let likelihood = NoncentralDLikelihood { d, n };

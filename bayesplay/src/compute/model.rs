@@ -5,12 +5,16 @@
 
 use itertools::izip;
 use rmath::integrate;
+use rmath::pcauchy;
+use rmath::pt;
 
 use std::ops::Mul;
 use thiserror::Error;
 
 use serde::{Deserialize, Serialize};
 
+use crate::common::Auc;
+use crate::common::Family;
 use crate::common::Function;
 use crate::common::Integrate;
 use crate::common::Range;
@@ -153,7 +157,8 @@ impl Model {
     /// assert!((area - 1.0).abs() < 0.001);
     /// ```
     pub fn posterior(&self) -> Result<Posterior, IntegralError> {
-        let constant = self.integral()?;
+        let auc = self.integral()?;
+        let constant = auc.value;
 
         let model = *self;
 
@@ -181,6 +186,64 @@ impl Model {
     /// ```
     pub fn predictive(&self) -> Predictive {
         Predictive(*self)
+    }
+
+    pub(crate) fn is_approximation(&self) -> ApproximateModel {
+        const SUPPORTED_PRIORS: [PriorFamily; 1] = [PriorFamily::Cauchy];
+        const SUPPORTED_LIKELIHOODS: [LikelihoodFamily; 3] = [
+            LikelihoodFamily::NoncentralD,
+            LikelihoodFamily::NoncentralD2,
+            LikelihoodFamily::NoncentralT,
+        ];
+
+        let prior_family = self.prior.family();
+        let likelihood_family = self.likelihood.family();
+
+        // Early return for unsupported combinations
+        if !SUPPORTED_LIKELIHOODS.contains(&likelihood_family)
+            || !SUPPORTED_PRIORS.contains(&prior_family)
+        {
+            return ApproximateModel::default();
+        }
+
+        // Convert likelihood to t-statistic form
+        let (t_likelihood, n, df) = match self.likelihood {
+            Likelihood::NoncentralD(likelihood) => {
+                let (t, n) = likelihood.into_t();
+                (t, n, t.df)
+            }
+            Likelihood::NoncentralD2(likelihood) => {
+                let (t, n) = likelihood.into_t();
+                (t, n, t.df)
+            }
+            Likelihood::NoncentralT(likelihood) => (likelihood, None, likelihood.df),
+            _ => unreachable!(),
+        };
+
+        let t_likelihood: Likelihood = t_likelihood.into();
+        let observation = t_likelihood.get_observation();
+        let abs_t = observation.map(|x| x.abs());
+
+        // Check if observation is within prior range
+        let prior_limits = self.prior.range_or_default();
+        let in_prior_range = observation
+            .map(|obs| obs >= prior_limits.0 && obs <= prior_limits.1)
+            .unwrap_or(false);
+
+        // Determine if approximation is needed based on t-value thresholds
+        let is_large = abs_t.map(|t| t > 5.0).unwrap_or(false);
+        let needs_approximation = abs_t
+            .map(|t| t > 15.0 || (t > 5.0 && !in_prior_range))
+            .unwrap_or(false);
+
+        ApproximateModel {
+            approximation: needs_approximation,
+            supported_prior: true,
+            is_large,
+            n,
+            t: observation.unwrap_or(0.0),
+            df,
+        }
     }
 }
 
@@ -216,10 +279,10 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
     /// let model = Model {prior: prior.into(), likelihood: likelihood.into(), range: (-f64::INFINITY, f64::INFINITY)};
     /// let auc = model.integral().unwrap();
     ///
-    /// assert_eq!(auc as f32, 0.09664394965841581 as f32);
+    /// assert_eq!(auc.value as f32, 0.09664394965841581 as f32);
     /// # }
     /// ```
-    fn integral(&self) -> Result<f64, IntegralError> {
+    fn integral(&self) -> Result<Auc, IntegralError> {
         let prior = self.prior;
         let likelihood = self.likelihood;
 
@@ -227,15 +290,27 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
         prior.validate()?;
         likelihood.validate()?;
 
+        let model = likelihood * prior;
+        if model.is_approximation().approximation {
+            return Err(IntegralError::Approximation);
+        }
+
         match prior {
-            Prior::Point(point) => Ok(likelihood.function(point.point)?),
+            Prior::Point(point) => {
+                let value = likelihood.function(point.point)?;
+                let auc = Auc::new(value, likelihood, prior);
+                Ok(auc)
+            }
             _ => {
                 let model = *self;
                 let f = move |x| model.function(x).unwrap();
                 let h = integrate!(f = f, lower = lower, upper = upper);
 
                 match h {
-                    Ok(v) => Ok(v.value),
+                    Ok(v) => {
+                        let auc = Auc::new(v.value, likelihood, prior);
+                        Ok(auc)
+                    }
                     Err(e) => Err(IntegralError::Integration(e)),
                 }
             }
@@ -243,7 +318,7 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
     }
     fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
         let (_, _) = (lb, ub);
-        self.integral()
+        self.integral().map(|auc| auc.value)
     }
 }
 
@@ -370,6 +445,7 @@ impl Function<f64, f64, anyhow::Error> for Predictive {
         let model = self.0.prior * likelihood;
         model
             .integral()
+            .map(|auc| auc.value)
             .map_err(|_| anyhow::Error::msg("Error with integration"))
     }
 }
@@ -382,7 +458,7 @@ impl Function<&[f64], Vec<Option<f64>>, anyhow::Error> for Predictive {
             .map(|x| {
                 likelihood.update_observation(*x);
                 let model = self.0.prior * likelihood;
-                model.integral().ok()
+                model.integral().ok().map(|auc| auc.value)
             })
             .collect();
         Ok(res)
@@ -459,13 +535,13 @@ impl Integrate<IntegralError, anyhow::Error> for Posterior {
             Err(e) => Err(IntegralError::Integration(e)),
         }
     }
-    fn integral(&self) -> Result<f64, IntegralError> {
+    fn integral(&self) -> Result<Auc, IntegralError> {
         let posterior = *self;
         let (lb, ub) = posterior.model.prior.range_or_default();
         let f = move |x| posterior.function(x).unwrap();
         let h = integrate!(f = f, lower = lb, upper = ub);
         match h {
-            Ok(v) => Ok(v.value),
+            Ok(v) => Ok(Auc::new(v.value, self.model.likelihood, self.model.prior)),
             Err(e) => Err(IntegralError::Integration(e)),
         }
     }

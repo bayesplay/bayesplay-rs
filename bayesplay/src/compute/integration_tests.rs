@@ -19,7 +19,7 @@ mod basic_examples {
     fn bayes_factor(likelihood: Likelihood, alt_prior: Prior, null_prior: Prior) -> f64 {
         let m1 = (likelihood * alt_prior).integral().unwrap();
         let m0 = (likelihood * null_prior).integral().unwrap();
-        m1 / m0
+        m1/ m0
     }
 
     #[test]
@@ -258,7 +258,6 @@ mod ttest_examples {
         assert_relative_eq!(bf, 0.9709, epsilon = 0.001);
     }
 
-
     #[test]
     fn test_noncentral_d2_likelihood_function() {
         // Test noncentral_d2 likelihood for two-sample case
@@ -408,5 +407,840 @@ mod validation_tests {
         let result = model.integral();
 
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod extended_validation_tests {
+    //! Comprehensive validation error tests.
+    //!
+    //! These tests verify that direct `.validate()` calls on all prior and
+    //! likelihood types return the correct error variants, matching the
+    //! error-checking behavior from the R package's test-error_messages.R.
+
+    use crate::prelude::*;
+
+    // ── Prior validations ──────────────────────────────────────────────
+
+    #[test]
+    fn test_normal_prior_negative_sd() {
+        let prior = NormalPrior::new(0.0, -1.0, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::InvalidStandardDeviation(sd)) if sd == -1.0
+        ));
+    }
+
+    #[test]
+    fn test_normal_prior_zero_sd() {
+        let prior = NormalPrior::new(0.0, 0.0, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::InvalidStandardDeviation(sd)) if sd == 0.0
+        ));
+    }
+
+    #[test]
+    fn test_cauchy_prior_negative_scale() {
+        let prior = CauchyPrior::new(0.0, -1.0, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::InvalidScale(s)) if s == -1.0
+        ));
+    }
+
+    #[test]
+    fn test_cauchy_prior_zero_scale() {
+        let prior = CauchyPrior::new(0.0, 0.0, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::InvalidScale(s)) if s == 0.0
+        ));
+    }
+
+    #[test]
+    fn test_student_t_prior_negative_sd() {
+        let prior = StudentTPrior::new(0.0, -1.0, 3.0, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::InvalidStandardDeviation(sd)) if sd == -1.0
+        ));
+    }
+
+    #[test]
+    fn test_student_t_prior_invalid_df_fraction() {
+        // df = 0.5, which is < 1 and should be invalid
+        let prior = StudentTPrior::new(0.0, 1.0, 0.5, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::InvalidDegreesOfFreedom(df)) if df == 0.5
+        ));
+    }
+
+    #[test]
+    fn test_student_t_prior_invalid_df_one() {
+        // df = 1 is invalid — must be > 1
+        let prior = StudentTPrior::new(0.0, 1.0, 1.0, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::InvalidDegreesOfFreedom(df)) if df == 1.0
+        ));
+    }
+
+    #[test]
+    fn test_student_t_prior_multiple_errors() {
+        // Both sd and df invalid
+        let prior = StudentTPrior::new(0.0, -1.0, 0.5, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::MultipleErrors(_))
+        ));
+    }
+
+    #[test]
+    fn test_uniform_prior_equal_bounds() {
+        let result = UniformPrior::new(1.0, 1.0);
+        assert!(matches!(result.validate(), Err(PriorError::InvalidRange)));
+    }
+
+    #[test]
+    fn test_uniform_prior_reversed_bounds() {
+        let result = UniformPrior::new(2.0, 1.0);
+        assert!(matches!(result.validate(), Err(PriorError::InvalidRange)));
+    }
+
+    #[test]
+    fn test_beta_prior_negative_alpha() {
+        let prior = BetaPrior::new(-1.0, 1.0, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::InvalidShapeParameter(v)) if v == -1.0
+        ));
+    }
+
+    #[test]
+    fn test_beta_prior_negative_beta() {
+        let prior = BetaPrior::new(1.0, -1.0, (None, None));
+        assert!(matches!(
+            prior.validate(),
+            Err(PriorError::InvalidShapeParameter(v)) if v == -1.0
+        ));
+    }
+
+    // ── Likelihood validations ─────────────────────────────────────────
+
+    #[test]
+    fn test_normal_likelihood_negative_se() {
+        let likelihood = NormalLikelihood {
+            mean: 0.0,
+            se: -1.0,
+        };
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidSE(se)) if se == -1.0
+        ));
+    }
+
+    #[test]
+    fn test_normal_likelihood_zero_se() {
+        let likelihood = NormalLikelihood { mean: 0.0, se: 0.0 };
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidSE(se)) if se == 0.0
+        ));
+    }
+
+    #[test]
+    fn test_student_t_likelihood_negative_sd() {
+        let likelihood = StudentTLikelihood::new(0.0, -1.0, 10.0);
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidSD(sd)) if sd == -1.0
+        ));
+    }
+
+    #[test]
+    fn test_student_t_likelihood_negative_df() {
+        let likelihood = StudentTLikelihood::new(0.0, 1.0, -5.0);
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidDF(df)) if df == -5.0
+        ));
+    }
+
+    #[test]
+    fn test_student_t_likelihood_multiple_errors() {
+        let likelihood = StudentTLikelihood::new(0.0, -1.0, -5.0);
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::MultipleErrors(_))
+        ));
+    }
+
+    #[test]
+    fn test_binomial_likelihood_successes_exceed_trials() {
+        let likelihood = BinomialLikelihood {
+            successes: 15.0,
+            trials: 10.0,
+        };
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidSuccess(s)) if s == 15.0
+        ));
+    }
+
+    #[test]
+    fn test_binomial_likelihood_zero_trials() {
+        let likelihood = BinomialLikelihood {
+            successes: 0.0,
+            trials: 0.0,
+        };
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidTrials(t)) if t == 0.0
+        ));
+    }
+
+    #[test]
+    fn test_binomial_likelihood_non_integer_successes() {
+        let likelihood = BinomialLikelihood {
+            successes: 1.1,
+            trials: 10.0,
+        };
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidSuccess(s)) if s == 1.1
+        ));
+    }
+
+    #[test]
+    fn test_binomial_likelihood_non_integer_trials() {
+        let likelihood = BinomialLikelihood {
+            successes: 1.0,
+            trials: 1.1,
+        };
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidTrials(t)) if t == 1.1
+        ));
+    }
+
+    #[test]
+    fn test_noncentral_d_likelihood_small_n() {
+        let likelihood = NoncentralDLikelihood::new(0.5, 0.5);
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidN(n)) if n == 0.5
+        ));
+    }
+
+    #[test]
+    fn test_noncentral_d2_likelihood_small_n1() {
+        let likelihood = NoncentralD2Likelihood::new(0.5, 0.5, 10.0);
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidN1(n)) if n == 0.5
+        ));
+    }
+
+    #[test]
+    fn test_noncentral_d2_likelihood_small_n2() {
+        let likelihood = NoncentralD2Likelihood::new(0.5, 10.0, 0.5);
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidN2(n)) if n == 0.5
+        ));
+    }
+
+    #[test]
+    fn test_noncentral_t_likelihood_small_df() {
+        let likelihood = NoncentralTLikelihood::new(2.0, 0.5);
+        assert!(matches!(
+            likelihood.validate(),
+            Err(LikelihoodError::InvalidDF(df)) if df == 0.5
+        ));
+    }
+}
+
+#[cfg(test)]
+mod type_of_tests {
+    //! Tests for PriorFamily identification via TypeOf trait.
+    //!
+    //! Verifies that each prior type correctly reports its family
+    //! and that is_point() returns true only for PointPrior.
+
+    use crate::prelude::*;
+    use crate::prior::PriorFamily;
+
+    #[test]
+    fn test_normal_type_of() {
+        let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+        assert_eq!(prior.type_of(), PriorFamily::Normal);
+    }
+
+    #[test]
+    fn test_cauchy_type_of() {
+        let prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
+        assert_eq!(prior.type_of(), PriorFamily::Cauchy);
+    }
+
+    #[test]
+    fn test_student_t_type_of() {
+        let prior: Prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).into();
+        assert_eq!(prior.type_of(), PriorFamily::StudentT);
+    }
+
+    #[test]
+    fn test_uniform_type_of() {
+        let prior: Prior = UniformPrior::new(0.0, 1.0).into();
+        assert_eq!(prior.type_of(), PriorFamily::Uniform);
+    }
+
+    #[test]
+    fn test_beta_type_of() {
+        let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
+        assert_eq!(prior.type_of(), PriorFamily::Beta);
+    }
+
+    #[test]
+    fn test_point_type_of() {
+        let prior: Prior = PointPrior::new(0.0).into();
+        assert_eq!(prior.type_of(), PriorFamily::Point);
+    }
+
+    #[test]
+    fn test_point_is_point() {
+        let prior: Prior = PointPrior::new(0.0).into();
+        assert!(prior.is_point());
+    }
+
+    #[test]
+    fn test_normal_is_not_point() {
+        let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+        assert!(!prior.is_point());
+    }
+
+    #[test]
+    fn test_cauchy_is_not_point() {
+        let prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
+        assert!(!prior.is_point());
+    }
+
+    #[test]
+    fn test_student_t_is_not_point() {
+        let prior: Prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).into();
+        assert!(!prior.is_point());
+    }
+
+    #[test]
+    fn test_uniform_is_not_point() {
+        let prior: Prior = UniformPrior::new(0.0, 1.0).into();
+        assert!(!prior.is_point());
+    }
+
+    #[test]
+    fn test_beta_is_not_point() {
+        let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
+        assert!(!prior.is_point());
+    }
+}
+
+#[cfg(test)]
+mod r_basic_calculations {
+    //! BF computation tests matching the R package's test-basic_calculations.R.
+    //!
+    //! All expected values come from the R package which is the gold standard.
+    //! Tolerance: epsilon = 0.005 for BF comparisons.
+
+    use crate::prelude::*;
+    use approx::assert_relative_eq;
+
+    /// Helper function to compute Bayes factor (H1/H0)
+    fn bayes_factor(likelihood: Likelihood, alt_prior: Prior, null_prior: Prior) -> f64 {
+        let m1 = (likelihood * alt_prior).integral().unwrap();
+        let m0 = (likelihood * null_prior).integral().unwrap();
+        m1 / m0
+    }
+
+    // ── Binomial tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_binomial_beta_prior_2_5_1() {
+        // R: likelihood("binomial", successes = 2, trials = 10) + prior("beta", 2.5, 1) vs point(0.5)
+        // BF01 = 0.4887695, so BF10 = 1/0.4887695
+        let likelihood: Likelihood = BinomialLikelihood::new(2.0, 10.0).into();
+        let null_prior: Prior = PointPrior::new(0.5).into();
+        let alt_prior: Prior = BetaPrior::new(2.5, 1.0, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 0.7018931, epsilon = 0.005);
+    }
+
+    #[test]
+    fn test_binomial_uniform_prior() {
+        // R: likelihood("binomial", 2, 10) + prior("uniform", 0, 1) vs point(0.5)
+        // BF01 = 0.6982422, so BF10 = 1/0.6982422
+        let likelihood: Likelihood = BinomialLikelihood::new(2.0, 10.0).into();
+        let null_prior: Prior = PointPrior::new(0.5).into();
+        let alt_prior: Prior = UniformPrior::new(0.0, 1.0).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 1.0 / 0.4833984, epsilon = 0.005);
+    }
+
+    #[test]
+    fn test_binomial_beta_1_1_equals_uniform() {
+        // Beta(1,1) is the same as Uniform(0,1), should give the same BF
+        let likelihood: Likelihood = BinomialLikelihood::new(2.0, 10.0).into();
+        let null_prior: Prior = PointPrior::new(0.5).into();
+        let alt_prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 1.0 / 0.4833984, epsilon = 0.005);
+    }
+
+    #[test]
+    fn test_binomial_beta_1_2_5() {
+        // R: likelihood("binomial", 2, 10) + prior("beta", 1, 2.5) vs point(0.5)
+        // BF10 = 3.3921325
+        let likelihood: Likelihood = BinomialLikelihood::new(2.0, 10.0).into();
+        let null_prior: Prior = PointPrior::new(0.5).into();
+        let alt_prior: Prior = BetaPrior::new(1.0, 2.5, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 3.3921325, epsilon = 0.005);
+    }
+
+    // ── Noncentral d tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_noncentral_d_cauchy_full() {
+        // R: NoncentralD(0.227, 80) + Cauchy(0, 1) vs Point(0)
+        // BF10 = 0.642
+        let likelihood: Likelihood = NoncentralDLikelihood::new(0.227, 80.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 0.642, epsilon = 0.005);
+    }
+
+    #[test]
+    fn test_noncentral_d_half_cauchy() {
+        // R: NoncentralD(0.227, 80) + half-Cauchy(0, 1, [0, Inf]) vs Point(0)
+        // BF10 = 1.254
+        let likelihood: Likelihood = NoncentralDLikelihood::new(0.227, 80.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 1.0, (Some(0.0), None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 1.254, epsilon = 0.005);
+    }
+
+    #[test]
+    fn test_noncentral_d_strong_effect() {
+        // R: NoncentralD(0.625, 51) + Cauchy(0, 0.707) vs Point(0)
+        // BF10 = 460.25
+        let likelihood: Likelihood = NoncentralDLikelihood::new(0.625, 51.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 460.25, epsilon = 5.0);
+    }
+
+    #[ignore = "approximation not implemented"]
+    #[test]
+    fn test_noncentral_d_negative_half_cauchy() {
+        // R: NoncentralD(-2.24, 34) + half-Cauchy(0, 0.707, [0, Inf]) vs Point(0)
+        // BF10 = 0.006773
+        let likelihood: Likelihood = NoncentralDLikelihood::new(-2.24, 34.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 0.707, (Some(0.0), None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 0.006773, epsilon = 0.001);
+    }
+
+    #[test]
+    fn test_noncentral_d_large_effect_small_n() {
+        // R: NoncentralD(1.492, 10) + Cauchy(0, 1) vs Point(0)
+        // BF10 = 42.44814
+        let likelihood: Likelihood = NoncentralDLikelihood::new(1.492, 10.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 42.44814, epsilon = 0.5);
+    }
+
+    // ── Noncentral d2 tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_noncentral_d2_two_sample() {
+        // R: NoncentralD2(-0.169, 17, 18) + Cauchy(0, 1) vs Point(0)
+        // BF10 = 0.274111
+        let likelihood: Likelihood = NoncentralD2Likelihood::new(-0.169, 17.0, 18.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 0.274111, epsilon = 0.005);
+    }
+
+    // ── Noncentral t tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_noncentral_t_matching_d2() {
+        // R: NoncentralT(-0.499, 33) + Cauchy(0, 2.957) vs Point(0)
+        // BF10 = 0.274111 (should match noncentral_d2 test above)
+        let likelihood: Likelihood = NoncentralTLikelihood::new(-0.499, 33.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 2.957, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 0.274111, epsilon = 0.005);
+    }
+
+    #[test]
+    fn test_noncentral_t_large_effect() {
+        // R: NoncentralT(4.718, 9) + Cauchy(0, 3.162) vs Point(0)
+        // BF10 = 42.44814
+        let likelihood: Likelihood = NoncentralTLikelihood::new(4.718, 9.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 3.162, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 42.44814, epsilon = 0.5);
+    }
+
+    #[test]
+    fn test_noncentral_t_cauchy_scaled() {
+        // R: NoncentralT(2.03, 79) + Cauchy(0, sqrt(80)) vs Point(0)
+        // BF10 = 0.642
+        let likelihood: Likelihood = NoncentralTLikelihood::new(2.03, 79.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 80.0_f64.sqrt(), (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 0.642, epsilon = 0.005);
+    }
+
+    #[test]
+    fn test_noncentral_t_df49() {
+        // R: NoncentralT(4.46, 49) + Cauchy(0, sqrt(50)) vs Point(0)
+        // BF10 = 403.352
+        let likelihood: Likelihood = NoncentralTLikelihood::new(4.46, 49.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 50.0_f64.sqrt(), (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 403.352, epsilon = 5.0);
+    }
+
+    #[test]
+    fn test_noncentral_t_df50() {
+        // R: NoncentralT(4.46, 50) + Cauchy(0, 5.049) vs Point(0)
+        // BF10 = 460.25
+        let likelihood: Likelihood = NoncentralTLikelihood::new(4.46, 50.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 5.049, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 460.25, epsilon = 5.0);
+    }
+
+    // ── Student-t likelihood tests ─────────────────────────────────────
+
+    #[test]
+    fn test_student_t_likelihood_with_student_t_prior() {
+        // R: StudentTLikelihood(5.47, 32.2, 119) + StudentTPrior(13.3, 4.93, 72) vs Point(0)
+        // BF10 = 0.97
+        let likelihood: Likelihood = StudentTLikelihood::new(5.47, 32.2, 119.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = StudentTPrior::new(13.3, 4.93, 72.0, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 0.97, epsilon = 0.01);
+    }
+
+    // ── Normal likelihood tests ────────────────────────────────────────
+
+    #[test]
+    fn test_normal_half_normal_prior_small_effect() {
+        // R: NormalLikelihood(0.63, 0.43) + half-Normal(0, 2.69, [0, Inf]) vs Point(0)
+        // BF10 = 0.83
+        let likelihood: Likelihood = NormalLikelihood::new(0.63, 0.43).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = NormalPrior::new(0.0, 2.69, (Some(0.0), None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 0.83, epsilon = 0.01);
+    }
+
+    #[test]
+    fn test_normal_with_normal_prior() {
+        // R: NormalLikelihood(15, 13) + Normal(50, 14) vs Point(0)
+        // BF10 = 0.247
+        let likelihood: Likelihood = NormalLikelihood::new(15.0, 13.0).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+        let alt_prior: Prior = NormalPrior::new(50.0, 14.0, (None, None)).into();
+
+        let bf = bayes_factor(likelihood, alt_prior, null_prior);
+        assert_relative_eq!(bf, 0.247, epsilon = 0.005);
+    }
+}
+
+#[cfg(test)]
+mod posterior_predictive_tests {
+    //! Tests for posterior and predictive distributions.
+    //!
+    //! These verify:
+    //! - The Savage-Dickey density ratio identity
+    //! - Predictive distribution consistency with model integral
+    //! - Posterior integrates to 1 for various model configurations
+
+    use crate::prelude::*;
+    use approx::assert_relative_eq;
+
+    #[test]
+    fn test_savage_dickey_ratio() {
+        // The Savage-Dickey density ratio: BF10 ≈ prior(0) / posterior(0)
+        // Using a noncentral_d model with continuous prior
+        let likelihood: Likelihood = NoncentralDLikelihood::new(0.227, 80.0).into();
+        let alt_prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
+        let null_prior: Prior = PointPrior::new(0.0).into();
+
+        let model = likelihood * alt_prior;
+        let posterior = model.posterior().unwrap();
+
+        // BF10 from model integrals
+        let m1 = model.integral().unwrap();
+        let m0 = (likelihood * null_prior).integral().unwrap();
+        let bf10 = m1 / m0;
+
+        // BF10 from Savage-Dickey: prior(0) / posterior(0)
+        let prior_at_0 = alt_prior.function(0.0).unwrap();
+        let posterior_at_0 = posterior.function(0.0).unwrap();
+        let bf10_sd = prior_at_0 / posterior_at_0;
+
+        assert_relative_eq!(bf10, bf10_sd, epsilon = 0.01);
+    }
+
+    #[test]
+    fn test_predictive_equals_integral() {
+        // For a normal likelihood + normal prior model:
+        // model.integral() ≈ model.predictive().function(observation)
+        let observation = 0.5;
+        let likelihood: Likelihood = NormalLikelihood::new(observation, 0.2).into();
+        let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+
+        let model = likelihood * prior;
+        let integral = model.integral().unwrap();
+
+        let predictive = model.predictive();
+        let pred_at_obs = predictive.function(observation).unwrap();
+
+        assert_relative_eq!(integral, pred_at_obs, epsilon = 0.001);
+    }
+
+    #[test]
+    fn test_posterior_integrates_to_one_normal_normal() {
+        // Normal likelihood + Normal prior (truncated to finite range)
+        let likelihood: Likelihood = NormalLikelihood::new(0.0, 1.0).into();
+        let prior: Prior = NormalPrior::new(0.0, 1.0, (Some(-10.0), Some(10.0))).into();
+
+        let model = likelihood * prior;
+        let posterior = model.posterior().unwrap();
+        let integral = posterior.integral().unwrap();
+
+        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+    }
+
+    #[test]
+    fn test_posterior_integrates_to_one_normal_cauchy() {
+        // Normal likelihood + Cauchy prior (truncated to finite range)
+        let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+        let prior: Prior = CauchyPrior::new(0.0, 1.0, (Some(-20.0), Some(20.0))).into();
+
+        let model = likelihood * prior;
+        let posterior = model.posterior().unwrap();
+        let integral = posterior.integral().unwrap();
+
+        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+    }
+
+    #[test]
+    fn test_posterior_integrates_to_one_binomial_beta() {
+        // Binomial likelihood + Beta prior
+        let likelihood: Likelihood = BinomialLikelihood::new(7.0, 10.0).into();
+        let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
+
+        let model = likelihood * prior;
+        let posterior = model.posterior().unwrap();
+        let integral = posterior.integral().unwrap();
+
+        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+    }
+
+    #[test]
+    fn test_posterior_integrates_to_one_normal_uniform() {
+        // Normal likelihood + Uniform prior
+        let likelihood: Likelihood = NormalLikelihood::new(5.0, 10.0).into();
+        let prior: Prior = UniformPrior::new(0.0, 20.0).into();
+
+        let model = likelihood * prior;
+        let posterior = model.posterior().unwrap();
+        let integral = posterior.integral().unwrap();
+
+        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+    }
+
+    #[test]
+    fn test_posterior_integrates_to_one_noncentral_d() {
+        // Noncentral d likelihood + Cauchy prior (truncated)
+        let likelihood: Likelihood = NoncentralDLikelihood::new(0.5, 30.0).into();
+        let prior: Prior = CauchyPrior::new(0.0, 0.707, (Some(-10.0), Some(10.0))).into();
+
+        let model = likelihood * prior;
+        let posterior = model.posterior().unwrap();
+        let integral = posterior.integral().unwrap();
+
+        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+    }
+
+    #[test]
+    fn test_posterior_integrates_to_one_half_normal() {
+        // Normal likelihood + half-normal prior (truncated to positive)
+        let likelihood: Likelihood = NormalLikelihood::new(5.5, 32.35).into();
+        let prior: Prior = NormalPrior::new(0.0, 13.3, (Some(0.0), None)).into();
+
+        let model = likelihood * prior;
+        let posterior = model.posterior().unwrap();
+        let integral = posterior.integral().unwrap();
+
+        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+    }
+}
+
+#[cfg(test)]
+mod normalization_tests {
+    //! Tests for prior normalization constants.
+    //!
+    //! Verifies that normalize() returns the correct CDF-based area
+    //! for various prior types and truncation configurations.
+
+    use crate::prelude::*;
+    use approx::assert_relative_eq;
+
+    // ── Normal prior normalization ─────────────────────────────────────
+
+    #[test]
+    fn test_normal_unbounded_normalization() {
+        let prior = NormalPrior::new(0.0, 1.0, (None, None));
+        assert_relative_eq!(prior.normalize().unwrap(), 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_normal_half_normalization() {
+        // Symmetric around 0, positive half → 0.5
+        let prior = NormalPrior::new(0.0, 1.0, (Some(0.0), None));
+        assert_relative_eq!(prior.normalize().unwrap(), 0.5, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_normal_one_sd_normalization() {
+        // ±1 SD contains ~68.27% of mass
+        let prior = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
+        assert_relative_eq!(prior.normalize().unwrap(), 0.6827, epsilon = 0.001);
+    }
+
+    #[test]
+    fn test_normal_two_sd_normalization() {
+        // ±2 SD contains ~95.45% of mass
+        let prior = NormalPrior::new(0.0, 1.0, (Some(-2.0), Some(2.0)));
+        assert_relative_eq!(prior.normalize().unwrap(), 0.9545, epsilon = 0.001);
+    }
+
+    // ── Cauchy prior normalization ─────────────────────────────────────
+
+    #[test]
+    fn test_cauchy_unbounded_normalization() {
+        let prior = CauchyPrior::new(0.0, 1.0, (None, None));
+        assert_relative_eq!(prior.normalize().unwrap(), 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_cauchy_half_normalization() {
+        // Symmetric around 0, positive half → 0.5
+        let prior = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+        assert_relative_eq!(prior.normalize().unwrap(), 0.5, epsilon = 1e-6);
+    }
+
+    #[test]
+    fn test_cauchy_symmetric_range_normalization() {
+        // Cauchy(0,1) from -1 to 1: CDF(1) - CDF(-1) = 0.75 - 0.25 = 0.5
+        let prior = CauchyPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
+        assert_relative_eq!(prior.normalize().unwrap(), 0.5, epsilon = 0.001);
+    }
+
+    // ── Student-t prior normalization ──────────────────────────────────
+
+    #[test]
+    fn test_student_t_unbounded_normalization() {
+        let prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None));
+        assert_relative_eq!(prior.normalize().unwrap(), 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_student_t_half_normalization() {
+        // Symmetric around 0, positive half → 0.5
+        let prior = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), None));
+        assert_relative_eq!(prior.normalize().unwrap(), 0.5, epsilon = 1e-6);
+    }
+
+    // ── Uniform prior normalization ────────────────────────────────────
+
+    #[test]
+    fn test_uniform_normalization() {
+        // Uniform prior always integrates to 1 by definition
+        let prior: Prior = UniformPrior::new(0.0, 1.0).into();
+        let integral = prior.integral().unwrap();
+        assert_relative_eq!(integral, 1.0, epsilon = 0.001);
+    }
+
+    #[test]
+    fn test_uniform_wider_normalization() {
+        let prior: Prior = UniformPrior::new(-5.0, 5.0).into();
+        let integral = prior.integral().unwrap();
+        assert_relative_eq!(integral, 1.0, epsilon = 0.001);
+    }
+
+    // ── Beta prior normalization ───────────────────────────────────────
+
+    #[test]
+    fn test_beta_normalization() {
+        // Beta(1,1) is uniform on [0,1], integrates to 1
+        let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
+        let integral = prior.integral().unwrap();
+        assert_relative_eq!(integral, 1.0, epsilon = 0.001);
+    }
+
+    #[test]
+    fn test_beta_asymmetric_normalization() {
+        // Beta(2,5) integrates to 1 on [0,1]
+        let prior: Prior = BetaPrior::new(2.0, 5.0, (None, None)).into();
+        let integral = prior.integral().unwrap();
+        assert_relative_eq!(integral, 1.0, epsilon = 0.001);
+    }
+
+    // ── Point prior normalization ──────────────────────────────────────
+
+    #[test]
+    fn test_point_prior_normalization() {
+        // Point prior integrates to 1 (by convention)
+        let prior: Prior = PointPrior::new(0.0).into();
+        let integral = prior.integral().unwrap();
+        assert_relative_eq!(integral, 1.0, epsilon = 1e-10);
     }
 }

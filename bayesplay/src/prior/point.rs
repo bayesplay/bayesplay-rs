@@ -159,3 +159,64 @@ impl Range for PointPrior {
         (self.point, self.point)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prior::Prior;
+
+    #[test]
+    fn test_point_prior_creation() {
+        let prior: Prior = PointPrior::new(0.0).into();
+        if let Prior::Point(p) = prior {
+            assert_eq!(p.point, 0.0);
+        } else {
+            panic!("Expected Point prior");
+        }
+    }
+
+    #[test]
+    fn test_point_prior_at_point() {
+        let point = PointPrior::new(0.0);
+        assert_eq!(point.function(0.0).unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_point_prior_away_from_point() {
+        let point = PointPrior::new(0.0);
+        assert_eq!(point.function(0.5).unwrap(), 0.0);
+        assert_eq!(point.function(-1.0).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_point_prior_nonzero_point() {
+        let point = PointPrior::new(0.5);
+        assert_eq!(point.function(0.5).unwrap(), 1.0);
+        assert_eq!(point.function(0.0).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn test_point_prior_validation_valid() {
+        let point = PointPrior::new(0.0);
+        assert!(point.validate().is_ok());
+    }
+
+    #[test]
+    fn test_point_prior_validation_nan() {
+        let point = PointPrior { point: f64::NAN };
+        assert!(point.validate().is_err());
+    }
+
+    #[test]
+    fn test_point_prior_normalization() {
+        let point = PointPrior::new(0.0);
+        assert_eq!(point.normalize().unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_point_prior_range() {
+        let point = PointPrior::new(0.5);
+        assert_eq!(point.range(), (Some(0.5), Some(0.5)));
+        assert_eq!(point.default_range(), (0.5, 0.5));
+    }
+}

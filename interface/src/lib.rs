@@ -2,6 +2,7 @@ use bayesplay::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::ops::Index;
 use thiserror::Error;
+
 #[derive(Debug, PartialEq, Serialize, Clone, Copy, Ord, PartialOrd, Eq, Hash)]
 pub enum ParameterName {
     Location,

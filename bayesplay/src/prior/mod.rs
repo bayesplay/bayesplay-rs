@@ -62,11 +62,14 @@ pub mod point;
 pub mod student_t;
 pub mod uniform;
 
+use crate::common::Auc;
+use crate::common::Family;
 use crate::common::Function;
 use crate::common::Integrate;
 use crate::common::Range;
 use crate::common::Validate;
 use crate::compute::model::IntegralError;
+use crate::likelihood::NormalLikelihood;
 
 pub use beta::BetaPrior;
 pub use cauchy::CauchyPrior;
@@ -507,16 +510,20 @@ impl TypeOf for Prior {
 }
 
 impl Integrate<IntegralError, PriorError> for Prior {
-    fn integral(&self) -> Result<f64, IntegralError> {
+    fn integral(&self) -> Result<Auc, IntegralError> {
         let prior = *self;
         if prior.is_point() {
-            return Ok(1.0);
+            return Ok(Auc::new(1.0, NormalLikelihood::new(0.0, 1.0).into(), prior));
         }
         let (lb, ub) = prior.range_or_default();
         let f = move |x| prior.function(x).unwrap();
         let h = integrate!(f = f, lower = lb, upper = ub);
         match h {
-            Ok(v) => Ok(v.value),
+            Ok(v) => Ok(Auc::new(
+                v.value,
+                NormalLikelihood::new(0.0, 1.0).into(),
+                prior,
+            )),
             Err(e) => Err(IntegralError::Integration(e)),
         }
     }
@@ -542,5 +549,11 @@ impl Integrate<IntegralError, PriorError> for Prior {
             Ok(v) => Ok(v.value),
             Err(e) => Err(IntegralError::Integration(e)),
         }
+    }
+}
+
+impl Family<PriorFamily> for Prior {
+    fn family(&self) -> PriorFamily {
+        self.type_of()
     }
 }

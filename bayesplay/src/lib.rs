@@ -126,6 +126,7 @@ pub mod prelude {
 
     // General prior
     pub use crate::prior::Prior;
+    pub use crate::prior::PriorFamily;
     pub use crate::prior::PriorError;
     pub use crate::prior::PriorResult;
     pub use crate::prior::Normalize;
@@ -138,9 +139,6 @@ pub mod prelude {
     pub use crate::prior::UniformPrior;
     pub use crate::prior::StudentTPrior;
     pub use crate::prior::BetaPrior;
-
-    // Names of prior
-    pub use crate::prior::PriorFamily;
 
     // For computing Bayes factors
     pub use crate::compute::model::Model;

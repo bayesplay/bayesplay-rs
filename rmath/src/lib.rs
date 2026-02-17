@@ -1,6 +1,5 @@
-pub mod integration;
 pub mod distributions;
-
+pub mod integration;
 
 #[macro_export]
 macro_rules! dbeta {
@@ -93,7 +92,6 @@ macro_rules! pbinom {
     }
 }
 
-
 #[macro_export]
 macro_rules! dnorm {
     ($($a:tt = $c:expr ),*) => {
@@ -160,6 +158,27 @@ macro_rules! punif {
     }
 }
 
+#[macro_export]
+macro_rules! dexp {
+    ($($a:tt = $c:expr ),*) => {
+    $crate::distributions::exponential::safe_dexp(
+       $crate::distributions::exponential::Dexp {
+           $($a: Some($c),)*
+        ..Default::default()
+       })
+    }
+}
+
+#[macro_export]
+macro_rules! pexp {
+    ($($a:tt = $c:expr ),*) => {
+    $crate::distributions::exponential::safe_pexp(
+       $crate::distributions::exponential::Pexp {
+           $($a: Some($c),)*
+        ..Default::default()
+       })
+    }
+}
 
 #[macro_export]
 macro_rules! integrate {

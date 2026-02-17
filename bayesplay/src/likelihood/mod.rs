@@ -39,6 +39,7 @@ pub(crate) mod noncentral_t;
 pub(crate) mod normal;
 pub(crate) mod student_t;
 
+use crate::common::Family;
 use crate::common::Function;
 use crate::common::Validate;
 
@@ -326,5 +327,30 @@ impl Function<&[f64], Vec<Option<f64>>, LikelihoodError> for Likelihood {
 impl Validate<LikelihoodError> for Likelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {
         self.likelihood_validate()
+    }
+}
+
+
+#[derive(PartialEq, Debug, Serialize, Clone, Copy)]
+pub enum LikelihoodFamily {
+    Normal,
+    NoncentralD,
+    StudentT,
+    NoncentralD2,
+    NoncentralT,
+    Binomial,
+}
+
+impl Family<LikelihoodFamily> for Likelihood {
+    fn family(&self) -> LikelihoodFamily {
+        match self {
+            Likelihood::Normal(_) => LikelihoodFamily::Normal,
+            Likelihood::Binomial(_) => LikelihoodFamily::Binomial,
+            Likelihood::StudentT(_) => LikelihoodFamily::StudentT,
+            Likelihood::NoncentralD(_) => LikelihoodFamily::NoncentralD,
+            Likelihood::NoncentralD2(_) => LikelihoodFamily::NoncentralD2,
+            Likelihood::NoncentralT(_) => LikelihoodFamily::NoncentralT,
+             
+         } 
     }
 }

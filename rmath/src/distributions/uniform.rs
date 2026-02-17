@@ -38,51 +38,58 @@ impl Default for Punif {
     }
 }
 
-pub fn punif(x: f64, min: f64, max: f64, lower_tail: bool, log_p: bool) -> f64 {
-    let dist = statrs::distribution::Uniform::new(min, max).unwrap();
+pub fn punif(
+    x: f64,
+    min: f64,
+    max: f64,
+    lower_tail: bool,
+    log_p: bool,
+) -> Result<f64, &'static str> {
+    let dist = statrs::distribution::Uniform::new(min, max)
+        .map_err(|_| "Error creating Uniform distribution")?;
 
     match (lower_tail, log_p) {
-        (true, true) => (dist.cdf(x)).ln(),
-        (true, false) => dist.cdf(x),
-        (false, true) => (1.0 - dist.cdf(x)).ln(),
-        (false, false) => 1.0 - dist.cdf(x),
+        (true, true) => Ok(dist.cdf(x).ln()),
+        (true, false) => Ok(dist.cdf(x)),
+        (false, true) => Ok((1.0 - dist.cdf(x)).ln()),
+        (false, false) => Ok(1.0 - dist.cdf(x)),
     }
 }
 
-pub fn dunif(x: f64, mean: f64, sd: f64, log: bool) -> f64 {
-    let dist = statrs::distribution::Uniform::new(mean, sd).unwrap();
+pub fn dunif(x: f64, min: f64, max: f64, log: bool) -> Result<f64, &'static str> {
+    let dist = statrs::distribution::Uniform::new(min, max)
+        .map_err(|_| "Error creating Uniform distribution")?;
 
     match log {
-        true => dist.pdf(x).ln(),
-        false => dist.pdf(x),
+        true => Ok(dist.pdf(x).ln()),
+        false => Ok(dist.pdf(x)),
     }
 }
 
 #[allow(dead_code)]
-pub fn safe_dunif(args: Dunif) -> f64 {
+pub fn safe_dunif(args: Dunif) -> Result<f64, &'static str> {
     dunif(
-        args.x.expect("argument \"x\" is missing, with no default"),
+        args.x.ok_or("argument \"x\" is missing, with no default")?,
         args.min
-            .expect("argument \"min\" is missing, with no default"),
+            .ok_or("argument \"min\" is missing, with no default")?,
         args.max
-            .expect("argument \"max\" is missing, with no default"),
+            .ok_or("argument \"max\" is missing, with no default")?,
         args.log
-            .expect("argument \"log\" is missing, with no default"),
+            .ok_or("argument \"log\" is missing, with no default")?,
     )
 }
 
 #[allow(dead_code)]
-pub fn safe_punif(args: Punif) -> f64 {
+pub fn safe_punif(args: Punif) -> Result<f64, &'static str> {
     punif(
-        args.q.expect("argument \"q\" is missing, with no default"),
+        args.q.ok_or("argument \"q\" is missing, with no default")?,
         args.min
-            .expect("argument \"min\" is missing, with no default"),
+            .ok_or("argument \"min\" is missing, with no default")?,
         args.max
-            .expect("argument \"max\" is missing, with no default"),
+            .ok_or("argument \"max\" is missing, with no default")?,
         args.lower_tail
-            .expect("argument \"lower_tail\" is missing, with no default"),
+            .ok_or("argument \"lower_tail\" is missing, with no default")?,
         args.log_p
-            .expect("argument \"give_log\" is missing, with no default"),
+            .ok_or("argument \"log_p\" is missing, with no default")?,
     )
 }
-

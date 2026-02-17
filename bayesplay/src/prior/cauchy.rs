@@ -212,3 +212,128 @@ impl Function<f64, f64, PriorError> for CauchyPrior {
             / k)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prior::Prior;
+    use approx::assert_relative_eq;
+    use std::f64::consts::PI;
+
+    // ---- Tests from R's test-priors.R ----
+
+    #[test]
+    fn test_cauchy_density_at_zero() {
+        // R: prior("cauchy", 0, 1) at 0 == dcauchy(0, 0, 1)
+        // dcauchy(0, 0, 1) = 1/π
+        let cauchy = CauchyPrior::new(0.0, 1.0, (None, None));
+        let density = cauchy.function(0.0).unwrap();
+        let expected = 1.0 / PI; // dcauchy(0, 0, 1) = 1/π ≈ 0.3183099
+        assert_relative_eq!(density, expected, epsilon = 5e-7);
+    }
+
+    #[test]
+    fn test_cauchy_density_at_offset() {
+        // R: prior("cauchy", 2, 2) at 4 == dcauchy(4, 2, 2)
+        // dcauchy(4, 2, 2) = 1 / (π * 2 * (1 + ((4-2)/2)^2)) = 1 / (π * 2 * 2) = 1/(4π)
+        let cauchy = CauchyPrior::new(2.0, 2.0, (None, None));
+        let density = cauchy.function(4.0).unwrap();
+        let expected = 1.0 / (PI * 2.0 * (1.0 + ((4.0 - 2.0) / 2.0_f64).powi(2)));
+        assert_relative_eq!(density, expected, epsilon = 5e-7);
+    }
+
+    #[test]
+    fn test_half_cauchy_density_at_zero() {
+        // R: prior("cauchy", 0, 1, c(0, Inf)) at 0 == dcauchy(0, 0, 1) * 2
+        let half_cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+        let density = half_cauchy.function(0.0).unwrap();
+        let expected = (1.0 / PI) * 2.0; // dcauchy(0, 0, 1) * 2
+        assert_relative_eq!(density, expected, epsilon = 5e-7);
+    }
+
+    #[test]
+    fn test_half_cauchy_density_outside_range() {
+        // R: prior("cauchy", 0, 1, c(0, Inf)) at -1 == 0
+        let half_cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+        let density = half_cauchy.function(-1.0).unwrap();
+        assert_eq!(density, 0.0);
+    }
+
+    // ---- Creation and validation tests ----
+
+    #[test]
+    fn test_cauchy_prior_creation() {
+        let prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
+        if let Prior::Cauchy(p) = prior {
+            assert_eq!(p.location, 0.0);
+            assert_eq!(p.scale, 1.0);
+            assert_eq!(p.range, (None, None));
+        } else {
+            panic!("Expected Cauchy prior");
+        }
+    }
+
+    #[test]
+    fn test_cauchy_prior_validation_valid() {
+        let cauchy = CauchyPrior::new(0.0, 0.707, (None, None));
+        assert!(cauchy.validate().is_ok());
+    }
+
+    #[test]
+    fn test_cauchy_prior_validation_negative_scale() {
+        let cauchy = CauchyPrior::new(0.0, -1.0, (None, None));
+        assert!(matches!(
+            cauchy.validate(),
+            Err(PriorError::InvalidScale(_))
+        ));
+    }
+
+    #[test]
+    fn test_cauchy_prior_validation_zero_scale() {
+        let cauchy = CauchyPrior::new(0.0, 0.0, (None, None));
+        assert!(matches!(
+            cauchy.validate(),
+            Err(PriorError::InvalidScale(_))
+        ));
+    }
+
+    #[test]
+    fn test_cauchy_prior_validation_equal_range() {
+        let cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), Some(0.0)));
+        assert!(matches!(cauchy.validate(), Err(PriorError::InvalidRange)));
+    }
+
+    // ---- Normalization tests ----
+
+    #[test]
+    fn test_cauchy_normalization_unbounded() {
+        let cauchy = CauchyPrior::new(0.0, 1.0, (None, None));
+        assert_eq!(cauchy.normalize().unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_cauchy_normalization_half() {
+        let half_cauchy = CauchyPrior::new(0.0, 1.0, (Some(0.0), None));
+        assert_relative_eq!(half_cauchy.normalize().unwrap(), 0.5, epsilon = 1e-10);
+    }
+
+    // ---- Range tests ----
+
+    #[test]
+    fn test_cauchy_range_behavior() {
+        let cauchy = CauchyPrior::new(0.0, 1.0, (None, None));
+        assert_eq!(cauchy.range(), (None, None));
+        assert!(cauchy.has_default_range());
+
+        let truncated = CauchyPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
+        assert_eq!(truncated.range(), (Some(-1.0), Some(1.0)));
+        assert!(!truncated.has_default_range());
+    }
+
+    #[test]
+    fn test_truncated_cauchy_outside_bounds() {
+        let truncated = CauchyPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
+        assert_eq!(truncated.function(5.0).unwrap(), 0.0);
+        assert_eq!(truncated.function(-5.0).unwrap(), 0.0);
+    }
+}

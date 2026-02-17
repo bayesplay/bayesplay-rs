@@ -1,3 +1,9 @@
+use std::ops::{Div, Sub};
+
+use approx::{AbsDiffEq, RelativeEq};
+
+use crate::{prelude::Likelihood, prior::Prior};
+
 /// Trait for validating distribution parameters.
 ///
 /// Types implementing this trait can verify that their parameters are valid
@@ -121,6 +127,119 @@ pub trait Range {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Auc {
+    pub value: f64,
+    likelihood: Likelihood,
+    prior: Prior,
+}
+
+impl Auc {
+    pub(crate) fn new(value: f64, likelihood: Likelihood, prior: Prior) -> Self {
+        Self {
+            value,
+            likelihood,
+            prior,
+        }
+    }
+}
+
+impl PartialEq<f64> for Auc {
+    fn eq(&self, other: &f64) -> bool {
+        self.value == *other
+    }
+}
+
+impl PartialOrd for Auc {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.value.partial_cmp(&other.value)
+    }
+}
+
+impl RelativeEq for Auc {
+    fn default_max_relative() -> Self::Epsilon {
+        f64::EPSILON
+    }
+
+    fn relative_eq(
+        &self,
+        other: &Self,
+        epsilon: Self::Epsilon,
+        max_relative: Self::Epsilon,
+    ) -> bool {
+        self.value.relative_eq(&other.value, epsilon, max_relative)
+    }
+}
+
+impl Div for Auc {
+    type Output = f64;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        self.value / rhs.value
+    }
+}
+
+impl AbsDiffEq for Auc {
+    type Epsilon = f64;
+
+    fn default_epsilon() -> Self::Epsilon {
+        f64::EPSILON
+    }
+
+    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
+        self.value.abs_diff_eq(&other.value, epsilon)
+    }
+}
+
+impl From<Auc> for f64 {
+    fn from(auc: Auc) -> Self {
+        auc.value
+    }
+}
+
+impl Div<Auc> for f64 {
+    type Output = f64;
+
+    fn div(self, rhs: Auc) -> Self::Output {
+        self / rhs.value
+    }
+}
+
+impl Sub<f64> for Auc {
+    type Output = f64;
+
+    fn sub(self, rhs: f64) -> Self::Output {
+        self.value - rhs
+    }
+}
+
+impl AbsDiffEq<f64> for Auc {
+    type Epsilon = f64;
+
+    fn default_epsilon() -> Self::Epsilon {
+        f64::EPSILON
+    }
+
+    fn abs_diff_eq(&self, other: &f64, epsilon: Self::Epsilon) -> bool {
+        self.value.abs_diff_eq(other, epsilon)
+    }
+}
+
+impl RelativeEq<f64> for Auc {
+    fn default_max_relative() -> Self::Epsilon {
+        f64::EPSILON
+    }
+
+    fn relative_eq(
+        &self,
+        other: &f64,
+        epsilon: Self::Epsilon,
+        max_relative: Self::Epsilon,
+    ) -> bool {
+        self.value.relative_eq(other, epsilon, max_relative)
+    }
+}
+
 /// Trait for numerical integration of distributions.
 ///
 /// This trait enables computing the area under a probability density function,
@@ -144,7 +263,7 @@ pub trait Integrate<E, O>: Function<f64, f64, O> + Range {
     /// # Returns
     ///
     /// The area under the curve, or an error if integration fails.
-    fn integral(&self) -> Result<f64, E>;
+    fn integral(&self) -> Result<Auc, E>;
 
     /// Computes the integral over a specified range.
     ///
@@ -187,4 +306,10 @@ pub fn truncated_normalization<E>(
             Ok(p_upper - p_lower)
         }
     }
+}
+
+
+
+pub trait Family<T> {
+    fn family(&self) -> T;
 }

@@ -1,4 +1,4 @@
-use crate::distributions::normal::dnorm as dnorm;
+use crate::distributions::normal::dnorm;
 
 use statrs::distribution::{Beta, Normal, StudentsT};
 use statrs::distribution::{Continuous, ContinuousCDF};
@@ -224,7 +224,6 @@ fn r_d_1(log_p: bool) -> f64 {
     }
 }
 
-
 fn r_d_val(log_p: bool, x: f64) -> f64 {
     match log_p {
         true => x.ln(),
@@ -407,7 +406,6 @@ pub fn safe_pt(args: Pt) -> Result<f64, &'static str> {
         ),
     }
 }
-
 
 // write some tests
 #[cfg(test)]
