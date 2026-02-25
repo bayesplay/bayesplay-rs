@@ -6,6 +6,7 @@
 use itertools::izip;
 use rmath::integrate;
 use rmath::pcauchy;
+use rmath::pexp;
 use rmath::pt;
 
 use std::ops::Mul;
@@ -109,10 +110,28 @@ pub enum IntegralError {
     Integration(rmath::integration::IntegrationError),
     #[error("Have to approximate")]
     Approximation,
+    /// A distribution function call failed (e.g. invalid parameters).
+    #[error("Distribution error: {0}")]
+    Distribution(String),
+    /// `estimate_marginal` requires a prior with explicit finite bounds.
+    #[error("Prior must have finite bounds for estimate_marginal")]
+    UnboundedPrior,
+    /// `estimate_marginal` requires a sample size, but the `ApproximateModel` has `n = None`.
+    #[error("ApproximateModel has no sample size (n); estimate_marginal requires n")]
+    MissingN,
+}
+
+/// The result of [`estimate_marginal`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct MarginalResult {
+    /// The marginal likelihood (integrating out the effect size parameter).
+    pub marginal: f64,
+    /// The Bayes factor relative to the point-null (effect = 0).
+    pub bf: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub(crate) struct ApproximateModel {
+pub struct ApproximateModel {
     pub approximation: bool,
     supported_prior: bool,
     is_large: bool,
@@ -302,7 +321,7 @@ impl Model {
         Predictive(*self)
     }
 
-    pub(crate) fn is_approximation(&self) -> ApproximateModel {
+    pub fn is_approximation(&self) -> ApproximateModel {
         const SUPPORTED_PRIORS: [PriorFamily; 1] = [PriorFamily::Cauchy];
         const SUPPORTED_LIKELIHOODS: [LikelihoodFamily; 3] = [
             LikelihoodFamily::NoncentralD,
@@ -401,13 +420,16 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
         likelihood.validate()?;
 
         if self.is_approximation().needs_approximation() {
-            return Err(IntegralError::Approximation);
+            let result = estimate_marginal(&self.is_approximation(), &self.prior);
+            let marginal_result = result.ok();
+            let marginal = marginal_result.map(|r| r.marginal).unwrap_or(0.0);
+            return Ok(Auc::new(marginal, likelihood, prior, marginal_result));
         }
 
         match prior {
             Prior::Point(point) => {
                 let value = likelihood.function(point.point)?;
-                let auc = Auc::new(value, likelihood, prior);
+                let auc = Auc::new(value, likelihood, prior, None);
                 Ok(auc)
             }
             _ => {
@@ -417,7 +439,7 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
 
                 match h {
                     Ok(v) => {
-                        let auc = Auc::new(v.value, likelihood, prior);
+                        let auc = Auc::new(v.value, likelihood, prior, None);
                         Ok(auc)
                     }
                     Err(e) => Err(IntegralError::Integration(e)),
@@ -444,11 +466,14 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
-/// let model: Model = likelihood * prior;
-///
-/// let posterior = model.posterior().unwrap();
+/// // NoncentralD(-2.24, 34): |t| ≈ 13 > 5, observation outside [0, Inf) -> approximation path
+/// let likelihood: Likelihood = NoncentralDLikelihood::new(-2.24, 34.0).into();
+/// let prior = CauchyPrior::new(0.0, 0.707, (Some(0.0), Some(f64::INFINITY)));
+/// let approx = (likelihood * Prior::from(prior)).is_approximation();
+/// assert!(approx.needs_approximation());
+/// let prior_enum: Prior = prior.into();
+/// let result = estimate_marginal(&approx, &prior_enum).unwrap();
+/// assert!(result.bf < 1.0); // weak evidence against the positive-effect hypothesis
 /// ```
 ///
 /// # Evaluating the Posterior
@@ -650,8 +675,197 @@ impl Integrate<IntegralError, anyhow::Error> for Posterior {
         let f = move |x| posterior.function(x).unwrap();
         let h = integrate!(f = f, lower = lb, upper = ub);
         match h {
-            Ok(v) => Ok(Auc::new(v.value, self.model.likelihood, self.model.prior)),
+            Ok(v) => Ok(Auc::new(
+                v.value,
+                self.model.likelihood,
+                self.model.prior,
+                None,
+            )),
             Err(e) => Err(IntegralError::Integration(e)),
         }
     }
+}
+
+/// Computes the marginal likelihood and Bayes factor for a truncated Cauchy prior
+/// using a two-part correction strategy.
+///
+/// This mirrors the R function `estimate_marginal(n, t, df, prior)`. The approach
+/// decomposes the log-BF into:
+///
+/// 1. **Interval correction** (`log_bf_interval`): compares how much probability
+///    mass the posterior (approximated as a scaled t) and the prior (Cauchy at
+///    `rscale = prior.scale * √n`) each assign to `[lower, upper]`, working
+///    entirely in log space via `pexp` for numerical stability.
+///
+/// 2. **Uncorrected BF** (`log_bf_uncorrected`): the BF for the *unbounded* model
+///    `cauchy(location, rscale, (-∞, ∞))` vs the point null, computed by
+///    numerical integration.
+///
+/// The final BF combines both terms: `log_bf = log_bf_interval + log_bf_uncorrected`.
+///
+/// # Arguments
+///
+/// * `approx` – an [`ApproximateModel`] supplying `t`, `df`, and `n`
+///              (constructed via [`Model::is_approximation`])
+/// * `prior`  – a `CauchyPrior` with explicit finite bounds `(Some(lower), Some(upper))`
+///
+/// # Errors
+///
+/// Returns [`IntegralError::MissingN`] if `approx.n` is `None`.
+/// Returns [`IntegralError::UnboundedPrior`] if `prior.range` is not `(Some(_), Some(_))`.
+/// Returns [`IntegralError::Distribution`] if any CDF call fails.
+/// Returns [`IntegralError::Integration`] if numerical integration of the unbounded
+/// model fails.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let likelihood: Likelihood = NoncentralDLikelihood::new(0.5, 20.0).into();
+/// let prior = CauchyPrior::new(0.0, 0.707, (Some(0.0), Some(f64::INFINITY)));
+/// let approx = (likelihood * Prior::from(prior)).is_approximation();
+/// let prior_enum: Prior = prior.into();
+/// let result = estimate_marginal(&approx, &prior_enum).unwrap();
+/// assert!(result.bf > 1.0);
+/// ```
+pub fn estimate_marginal(
+    approx: &ApproximateModel,
+    prior: &Prior,
+) -> Result<MarginalResult, IntegralError> {
+    let prior = match prior {
+        Prior::Cauchy(cauchy) => cauchy,
+        _ => return Err(IntegralError::UnboundedPrior),
+    };
+
+    let n = approx.n.ok_or(IntegralError::MissingN)?;
+    let t = approx.t;
+    let df = approx.df;
+    // Require explicit finite-ish bounds (at least one bound must be Some).
+    // Both must be Some for the interval correction to be well-defined.
+    let (lower, upper) = match prior.range {
+        (Some(lo), Some(hi)) => (lo, hi),
+        (Some(lo), None) => (lo, f64::INFINITY),
+        (None, Some(hi)) => (f64::NEG_INFINITY, hi),
+        _ => return Err(IntegralError::UnboundedPrior),
+    };
+
+    // --- 1. Posterior interval (approximate posterior is a scaled t) ---
+    // var_delta = 1/n,  mean_delta = t / sqrt(n)
+    let sqrt_var_delta = (1.0_f64 / n).sqrt(); // = 1/sqrt(n)
+    let mean_delta = t / n.sqrt();
+
+    // Guard infinite bounds: CDF(+∞) = 1 → log = 0.0; CDF(-∞) = 0 → log = -∞.
+    // We bypass the CDF calls for infinite bounds to avoid any floating-point
+    // imprecision in the underlying distribution implementations.
+    let log_post_lower = if lower == f64::NEG_INFINITY {
+        f64::NEG_INFINITY
+    } else {
+        pt!(
+            q = (lower - mean_delta) / sqrt_var_delta,
+            df = df,
+            lower_tail = true,
+            log_p = true
+        )
+        .map_err(|e| IntegralError::Distribution(e.to_string()))?
+    };
+
+    let log_post_upper = if upper == f64::INFINITY {
+        0.0 // log(1) = 0
+    } else {
+        pt!(
+            q = (upper - mean_delta) / sqrt_var_delta,
+            df = df,
+            lower_tail = true,
+            log_p = true
+        )
+        .map_err(|e| IntegralError::Distribution(e.to_string()))?
+    };
+
+    // log(CDF_upper - CDF_lower) computed stably:
+    // log_p[[2]] + pexp(diff(log_p), 1, lower.tail=TRUE, log.p=TRUE)
+    // = log_post_upper + log(1 - exp(log_post_lower - log_post_upper))
+    let post_interval = log_post_upper
+        + pexp!(
+            q = log_post_upper - log_post_lower,
+            rate = 1.0,
+            lower_tail = true,
+            log_p = true
+        )
+        .map_err(|e| IntegralError::Distribution(e.to_string()))?;
+
+    // --- 2. Prior interval (Cauchy at scaled rscale) ---
+    let rscale = prior.scale * n.sqrt();
+
+    let log_prior_lower = if lower == f64::NEG_INFINITY {
+        f64::NEG_INFINITY
+    } else {
+        pcauchy!(
+            q = lower,
+            location = prior.location,
+            scale = rscale,
+            lower_tail = true,
+            log_p = true
+        )
+        .map_err(|e| IntegralError::Distribution(e.to_string()))?
+    };
+
+    let log_prior_upper = if upper == f64::INFINITY {
+        0.0 // log(1) = 0
+    } else {
+        pcauchy!(
+            q = upper,
+            location = prior.location,
+            scale = rscale,
+            lower_tail = true,
+            log_p = true
+        )
+        .map_err(|e| IntegralError::Distribution(e.to_string()))?
+    };
+
+    let prior_interval = log_prior_upper
+        + pexp!(
+            q = log_prior_upper - log_prior_lower,
+            rate = 1.0,
+            lower_tail = true,
+            log_p = true
+        )
+        .map_err(|e| IntegralError::Distribution(e.to_string()))?;
+
+    // --- 3. Interval log-BF ---
+    let log_bf_interval = post_interval - prior_interval;
+
+    // --- 4. Uncorrected BF via numerical integration (unbounded model) ---
+    // The integrand dnt(t; df, ncp=x) * dcauchy(x; 0, rscale) has its mass concentrated
+    // near x = t (the ncp that maximises the likelihood). When |t| is large, this peak
+    // lies far from x = 0, which is where gkquad's infinite-interval transformation
+    // (x -> x/(1+|x|)) clusters its initial quadrature points. Without guidance, the
+    // adaptive integrator can declare convergence before it finds the peak.
+    //
+    // The fix is to pass `t` as a split point, forcing gkquad to place a subdivision
+    // boundary exactly at the peak location so the algorithm concentrates subdivisions
+    // in the right region. This matches the accuracy achieved by R's QUADPACK
+    // (integrate(..., subdivisions=1000, abs.tol=1e-14)).
+    let unbounded_prior: Prior = CauchyPrior::new(prior.location, rscale, (None, None)).into();
+    let new_likelihood: Likelihood = NoncentralTLikelihood::new(t, df).into();
+    let unbounded_model = new_likelihood * unbounded_prior;
+
+    let f = move |x| unbounded_model.function(x).unwrap();
+    let auc_h1 = integrate!(f = f, points = vec![t])
+        .map_err(IntegralError::Integration)?
+        .value;
+    let auc_h0 = new_likelihood
+        .function(0.0)
+        .map_err(|e| IntegralError::Distribution(e.to_string()))?;
+
+    let log_bf_uncorrected = (auc_h1 / auc_h0).ln();
+
+    // --- 5. Combine ---
+    let log_bf = log_bf_interval + log_bf_uncorrected;
+    let bf = log_bf.exp();
+
+    Ok(MarginalResult {
+        marginal: bf * auc_h0,
+        bf,
+    })
 }

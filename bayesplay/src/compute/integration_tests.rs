@@ -750,11 +750,12 @@ mod r_basic_calculations {
     //! BF computation tests matching the R package's test-basic_calculations.R.
     //!
     //! All expected values come from the R package which is the gold standard.
-    //! Tolerance: epsilon = 0.005 for BF comparisons.
+    //! Tolerance: epsilon = EPS (0.001) for BF comparisons.
 
     use crate::compute::model::IntegralError;
     use crate::prelude::*;
     use approx::assert_relative_eq;
+    static EPS: f64 = 0.001;
 
     /// Helper function to compute Bayes factor (H1/H0)
     fn bayes_factor(likelihood: Likelihood, alt_prior: Prior, null_prior: Prior) -> f64 {
@@ -784,7 +785,7 @@ mod r_basic_calculations {
         let alt_prior: Prior = BetaPrior::new(2.5, 1.0, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.7018931, epsilon = 0.005);
+        assert_relative_eq!(bf, 0.7018931, epsilon = EPS);
     }
 
     #[test]
@@ -796,7 +797,7 @@ mod r_basic_calculations {
         let alt_prior: Prior = UniformPrior::new(0.0, 1.0).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 1.0 / 0.4833984, epsilon = 0.005);
+        assert_relative_eq!(bf, 1.0 / 0.4833984, epsilon = EPS);
     }
 
     #[test]
@@ -807,7 +808,7 @@ mod r_basic_calculations {
         let alt_prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 1.0 / 0.4833984, epsilon = 0.005);
+        assert_relative_eq!(bf, 1.0 / 0.4833984, epsilon = EPS);
     }
 
     #[test]
@@ -819,7 +820,7 @@ mod r_basic_calculations {
         let alt_prior: Prior = BetaPrior::new(1.0, 2.5, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 3.3921325, epsilon = 0.005);
+        assert_relative_eq!(bf, 3.3921325, epsilon = EPS);
     }
 
     // ── Noncentral d tests ─────────────────────────────────────────────
@@ -833,7 +834,7 @@ mod r_basic_calculations {
         let alt_prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.642, epsilon = 0.005);
+        assert_relative_eq!(bf, 0.642, epsilon = EPS);
     }
 
     #[test]
@@ -845,44 +846,47 @@ mod r_basic_calculations {
         let alt_prior: Prior = CauchyPrior::new(0.0, 1.0, (Some(0.0), None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 1.254, epsilon = 0.005);
+        assert_relative_eq!(bf, 1.254, epsilon = EPS);
     }
 
     #[test]
     fn test_noncentral_d_strong_effect() {
         // R: NoncentralD(0.625, 51) + Cauchy(0, 0.707) vs Point(0)
-        // BF10 = 460.25
+        // BF10 = 465.064
         let likelihood: Likelihood = NoncentralDLikelihood::new(0.625, 51.0).into();
         let null_prior: Prior = PointPrior::new(0.0).into();
         let alt_prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 460.25, epsilon = 5.0);
+        assert_relative_eq!(bf, 465.064_089_100_291_48, epsilon = EPS);
     }
 
     #[test]
     fn test_noncentral_d_negative_half_cauchy() {
         // R: NoncentralD(-2.24, 34) + half-Cauchy(0, 0.707, [0, Inf]) vs Point(0)
         // BF10 = 0.006773
+        // |t| = 2.24 * sqrt(34) ≈ 13.06 > 5, observation outside [0, Inf] -> approximation path
         let likelihood: Likelihood = NoncentralDLikelihood::new(-2.24, 34.0).into();
+        let cauchy_prior = CauchyPrior::new(0.0, 0.707, (Some(0.0), None));
+        let alt_prior: Prior = cauchy_prior.into();
         let null_prior: Prior = PointPrior::new(0.0).into();
-        let alt_prior: Prior = CauchyPrior::new(0.0, 0.707, (Some(0.0), None)).into();
 
-        let bf = bayes_factor_result(likelihood, alt_prior, null_prior);
-        assert_eq!(bf.map_err(|e| e.to_string()), Err(IntegralError::Approximation.to_string()))
-        // assert_relative_eq!(bf, 0.006773, epsilon = 0.001);
+        let m0 = (likelihood * null_prior).integral().unwrap();
+        let m1 = (likelihood * alt_prior).integral().unwrap();
+        let bf = m1 / m0;
+        assert_relative_eq!(1.0 / bf, 147.666_019_341_430_88, epsilon = EPS);
     }
 
     #[test]
     fn test_noncentral_d_large_effect_small_n() {
         // R: NoncentralD(1.492, 10) + Cauchy(0, 1) vs Point(0)
-        // BF10 = 42.44814
+        // BF10 = 42.4677
         let likelihood: Likelihood = NoncentralDLikelihood::new(1.492, 10.0).into();
         let null_prior: Prior = PointPrior::new(0.0).into();
         let alt_prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 42.44814, epsilon = 0.5);
+        assert_relative_eq!(bf, 42.467_654_362_821_015, epsilon = EPS);
     }
 
     // ── Noncentral d2 tests ────────────────────────────────────────────
@@ -896,7 +900,7 @@ mod r_basic_calculations {
         let alt_prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.274111, epsilon = 0.005);
+        assert_relative_eq!(bf, 0.274111, epsilon = EPS);
     }
 
     // ── Noncentral t tests ─────────────────────────────────────────────
@@ -910,19 +914,19 @@ mod r_basic_calculations {
         let alt_prior: Prior = CauchyPrior::new(0.0, 2.957, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.274111, epsilon = 0.005);
+        assert_relative_eq!(bf, 0.274111, epsilon = EPS);
     }
 
     #[test]
     fn test_noncentral_t_large_effect() {
         // R: NoncentralT(4.718, 9) + Cauchy(0, 3.162) vs Point(0)
-        // BF10 = 42.44814
+        // BF10 = 42.4607
         let likelihood: Likelihood = NoncentralTLikelihood::new(4.718, 9.0).into();
         let null_prior: Prior = PointPrior::new(0.0).into();
         let alt_prior: Prior = CauchyPrior::new(0.0, 3.162, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 42.44814, epsilon = 0.5);
+        assert_relative_eq!(bf, 42.460_688_167_600_331, epsilon = EPS);
     }
 
     #[test]
@@ -934,7 +938,7 @@ mod r_basic_calculations {
         let alt_prior: Prior = CauchyPrior::new(0.0, 80.0_f64.sqrt(), (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.642, epsilon = 0.005);
+        assert_relative_eq!(bf, 0.642, epsilon = EPS);
     }
 
     #[test]
@@ -946,19 +950,19 @@ mod r_basic_calculations {
         let alt_prior: Prior = CauchyPrior::new(0.0, 50.0_f64.sqrt(), (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 403.352, epsilon = 5.0);
+        assert_relative_eq!(bf, 403.352_227_790_426_41, epsilon = EPS);
     }
 
     #[test]
     fn test_noncentral_t_df50() {
         // R: NoncentralT(4.46, 50) + Cauchy(0, 5.049) vs Point(0)
-        // BF10 = 460.25
+        // BF10 = 460.250
         let likelihood: Likelihood = NoncentralTLikelihood::new(4.46, 50.0).into();
         let null_prior: Prior = PointPrior::new(0.0).into();
         let alt_prior: Prior = CauchyPrior::new(0.0, 5.049, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 460.25, epsilon = 5.0);
+        assert_relative_eq!(bf, 460.249_519_258_614_84, epsilon = EPS);
     }
 
     // ── Student-t likelihood tests ─────────────────────────────────────
@@ -966,13 +970,13 @@ mod r_basic_calculations {
     #[test]
     fn test_student_t_likelihood_with_student_t_prior() {
         // R: StudentTLikelihood(5.47, 32.2, 119) + StudentTPrior(13.3, 4.93, 72) vs Point(0)
-        // BF10 = 0.97
+        // BF10 = 0.97381
         let likelihood: Likelihood = StudentTLikelihood::new(5.47, 32.2, 119.0).into();
         let null_prior: Prior = PointPrior::new(0.0).into();
         let alt_prior: Prior = StudentTPrior::new(13.3, 4.93, 72.0, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.97, epsilon = 0.01);
+        assert_relative_eq!(bf, 0.973_812_546_820_977_62, epsilon = EPS);
     }
 
     // ── Normal likelihood tests ────────────────────────────────────────
@@ -980,13 +984,13 @@ mod r_basic_calculations {
     #[test]
     fn test_normal_half_normal_prior_small_effect() {
         // R: NormalLikelihood(0.63, 0.43) + half-Normal(0, 2.69, [0, Inf]) vs Point(0)
-        // BF10 = 0.83
+        // BF10 = 0.83252
         let likelihood: Likelihood = NormalLikelihood::new(0.63, 0.43).into();
         let null_prior: Prior = PointPrior::new(0.0).into();
         let alt_prior: Prior = NormalPrior::new(0.0, 2.69, (Some(0.0), None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.83, epsilon = 0.01);
+        assert_relative_eq!(bf, 0.832_516_704_274_544_27, epsilon = EPS);
     }
 
     #[test]
@@ -998,7 +1002,7 @@ mod r_basic_calculations {
         let alt_prior: Prior = NormalPrior::new(50.0, 14.0, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.247, epsilon = 0.005);
+        assert_relative_eq!(bf, 0.247, epsilon = EPS);
     }
 }
 

@@ -35,9 +35,13 @@ where
 
     let tol = Tolerance::AbsAndRel(epsabs, epsrel);
 
-    let result = Integrator::new(f)
-        .max_iters(limit)
-        .tolerance(tol)
+    let mut integrator = Integrator::new(f).max_iters(limit).tolerance(tol);
+
+    if let Some(ref pts) = args.points {
+        integrator = integrator.points(pts);
+    }
+
+    let result = integrator
         .run(a.unwrap_or(f64::NEG_INFINITY)..b.unwrap_or(f64::INFINITY))
         .estimate_delta();
 
@@ -69,6 +73,9 @@ where
     pub subdivisions: Option<i64>,
     pub abs_tol: Option<f64>,
     pub rel_tol: Option<f64>,
+    /// Optional split points to force the integrator to subdivide at specific locations.
+    /// Useful when the integrand has a known peak far from the integration origin.
+    pub points: Option<Vec<f64>>,
 }
 
 impl<F> Default for Integrate<F>
@@ -83,6 +90,7 @@ where
             subdivisions: Some(1000),
             abs_tol: Some(1.49e-8),
             rel_tol: Some(1.49e-8),
+            points: None,
         }
     }
 }

@@ -2,7 +2,10 @@ use std::ops::{Div, Sub};
 
 use approx::{AbsDiffEq, RelativeEq};
 
-use crate::{prelude::Likelihood, prior::Prior};
+use crate::{
+    prelude::{Likelihood, MarginalResult},
+    prior::{Prior, TypeOf},
+};
 
 /// Trait for validating distribution parameters.
 ///
@@ -132,14 +135,21 @@ pub struct Auc {
     pub value: f64,
     likelihood: Likelihood,
     prior: Prior,
+    approximate_marginal: Option<MarginalResult>,
 }
 
 impl Auc {
-    pub(crate) fn new(value: f64, likelihood: Likelihood, prior: Prior) -> Self {
+    pub(crate) fn new(
+        value: f64,
+        likelihood: Likelihood,
+        prior: Prior,
+        approximate_marginal: Option<MarginalResult>,
+    ) -> Self {
         Self {
             value,
             likelihood,
             prior,
+            approximate_marginal,
         }
     }
 }
@@ -175,6 +185,18 @@ impl Div for Auc {
     type Output = f64;
 
     fn div(self, rhs: Self) -> Self::Output {
+        if self.approximate_marginal.is_some() || rhs.approximate_marginal.is_some() {
+            match (
+                self.approximate_marginal,
+                self.prior.is_point(),
+                rhs.approximate_marginal,
+                rhs.prior.is_point(),
+            ) {
+                (Some(v), false, None, false) => return v.bf,
+                (None, true, Some(v), false) => return 1.0 / v.bf,
+                _ => {}
+            }
+        }
         self.value / rhs.value
     }
 }
@@ -307,8 +329,6 @@ pub fn truncated_normalization<E>(
         }
     }
 }
-
-
 
 pub trait Family<T> {
     fn family(&self) -> T;

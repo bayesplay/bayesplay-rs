@@ -106,43 +106,46 @@ pub mod prelude {
 
     // Common traits
     pub use crate::common::Function;
-    pub use crate::common::Validate;
-    pub use crate::common::Range;
     pub use crate::common::Integrate;
+    pub use crate::common::Range;
+    pub use crate::common::Validate;
 
     // General likelihood
     pub use crate::likelihood::Likelihood;
-    pub use crate::likelihood::Observation;
     pub use crate::likelihood::LikelihoodError;
     pub use crate::likelihood::LikelihoodResult;
-   
+    pub use crate::likelihood::Observation;
+
     // Specific likelihoods
-    pub use crate::likelihood::NormalLikelihood;
     pub use crate::likelihood::BinomialLikelihood;
-    pub use crate::likelihood::StudentTLikelihood;
-    pub use crate::likelihood::NoncentralDLikelihood;
     pub use crate::likelihood::NoncentralD2Likelihood;
+    pub use crate::likelihood::NoncentralDLikelihood;
     pub use crate::likelihood::NoncentralTLikelihood;
+    pub use crate::likelihood::NormalLikelihood;
+    pub use crate::likelihood::StudentTLikelihood;
 
     // General prior
-    pub use crate::prior::Prior;
-    pub use crate::prior::PriorFamily;
-    pub use crate::prior::PriorError;
-    pub use crate::prior::PriorResult;
     pub use crate::prior::Normalize;
+    pub use crate::prior::Prior;
+    pub use crate::prior::PriorError;
+    pub use crate::prior::PriorFamily;
+    pub use crate::prior::PriorResult;
     pub use crate::prior::TypeOf;
 
     // Specific prior
+    pub use crate::prior::BetaPrior;
+    pub use crate::prior::CauchyPrior;
     pub use crate::prior::NormalPrior;
     pub use crate::prior::PointPrior;
-    pub use crate::prior::CauchyPrior;
-    pub use crate::prior::UniformPrior;
     pub use crate::prior::StudentTPrior;
-    pub use crate::prior::BetaPrior;
+    pub use crate::prior::UniformPrior;
 
     // For computing Bayes factors
     pub use crate::compute::model::Model;
 
+    pub use crate::compute::model::estimate_marginal;
+    pub use crate::compute::model::ApproximateModel;
+    pub use crate::compute::model::IntegralError;
+    pub use crate::compute::model::MarginalResult;
     pub use crate::compute::model::Posterior;
 }
-
