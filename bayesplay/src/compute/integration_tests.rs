@@ -782,22 +782,22 @@ mod r_basic_calculations {
         // BF01 = 0.4887695, so BF10 = 1/0.4887695
         let likelihood: Likelihood = BinomialLikelihood::new(2.0, 10.0).into();
         let null_prior: Prior = PointPrior::new(0.5).into();
-        let alt_prior: Prior = BetaPrior::new(2.5, 1.0, (None, None)).into();
+        let alt_prior: Prior = BetaPrior::new(1.0, 2.5, (None, None)).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 0.7018931, epsilon = EPS);
+        assert_relative_eq!(bf, 3.3921325, epsilon = EPS);
     }
 
     #[test]
     fn test_binomial_uniform_prior() {
-        // R: likelihood("binomial", 2, 10) + prior("uniform", 0, 1) vs point(0.5)
+        // R: likelihood("binomial", 3, 12) + prior("uniform", 0, 1) vs point(0.5)
         // BF01 = 0.6982422, so BF10 = 1/0.6982422
-        let likelihood: Likelihood = BinomialLikelihood::new(2.0, 10.0).into();
+        let likelihood: Likelihood = BinomialLikelihood::new(3.0, 12.0).into();
         let null_prior: Prior = PointPrior::new(0.5).into();
         let alt_prior: Prior = UniformPrior::new(0.0, 1.0).into();
 
         let bf = bayes_factor(likelihood, alt_prior, null_prior);
-        assert_relative_eq!(bf, 1.0 / 0.4833984, epsilon = EPS);
+        assert_relative_eq!(bf, 1.0/0.6982422, epsilon = EPS);
     }
 
     #[test]
