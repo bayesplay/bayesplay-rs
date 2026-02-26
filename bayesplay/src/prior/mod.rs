@@ -513,7 +513,7 @@ impl Integrate<IntegralError, PriorError> for Prior {
     fn integral(&self) -> Result<Auc, IntegralError> {
         let prior = *self;
         if prior.is_point() {
-            return Ok(Auc::new(1.0, NormalLikelihood::new(0.0, 1.0).into(), prior));
+            return Ok(Auc::new(1.0, NormalLikelihood::new(0.0, 1.0).into(), prior, None));
         }
         let (lb, ub) = prior.range_or_default();
         let f = move |x| prior.function(x).unwrap();
@@ -523,6 +523,7 @@ impl Integrate<IntegralError, PriorError> for Prior {
                 v.value,
                 NormalLikelihood::new(0.0, 1.0).into(),
                 prior,
+                None
             )),
             Err(e) => Err(IntegralError::Integration(e)),
         }
