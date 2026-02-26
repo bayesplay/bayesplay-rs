@@ -1051,6 +1051,7 @@ mod posterior_predictive_tests {
 
     use crate::prelude::*;
     use approx::assert_relative_eq;
+    static EPS: f64 = 0.000001;
 
     #[test]
     fn test_savage_dickey_ratio() {
@@ -1073,7 +1074,7 @@ mod posterior_predictive_tests {
         let posterior_at_0 = posterior.function(0.0).unwrap();
         let bf10_sd = prior_at_0 / posterior_at_0;
 
-        assert_relative_eq!(bf10, bf10_sd, epsilon = 0.01);
+        assert_relative_eq!(bf10, bf10_sd, epsilon = EPS);
     }
 
     #[test]
@@ -1103,7 +1104,7 @@ mod posterior_predictive_tests {
         let posterior = model.posterior().unwrap();
         let integral = posterior.integral().unwrap();
 
-        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+        assert_relative_eq!(integral, 1.0, epsilon = EPS);
     }
 
     #[test]
@@ -1116,7 +1117,7 @@ mod posterior_predictive_tests {
         let posterior = model.posterior().unwrap();
         let integral = posterior.integral().unwrap();
 
-        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+        assert_relative_eq!(integral, 1.0, epsilon = EPS);
     }
 
     #[test]
@@ -1129,7 +1130,7 @@ mod posterior_predictive_tests {
         let posterior = model.posterior().unwrap();
         let integral = posterior.integral().unwrap();
 
-        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+        assert_relative_eq!(integral, 1.0, epsilon = EPS);
     }
 
     #[test]
@@ -1142,7 +1143,7 @@ mod posterior_predictive_tests {
         let posterior = model.posterior().unwrap();
         let integral = posterior.integral().unwrap();
 
-        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+        assert_relative_eq!(integral, 1.0, epsilon = EPS);
     }
 
     #[test]
@@ -1155,7 +1156,7 @@ mod posterior_predictive_tests {
         let posterior = model.posterior().unwrap();
         let integral = posterior.integral().unwrap();
 
-        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+        assert_relative_eq!(integral, 1.0, epsilon = EPS);
     }
 
     #[test]
@@ -1168,7 +1169,7 @@ mod posterior_predictive_tests {
         let posterior = model.posterior().unwrap();
         let integral = posterior.integral().unwrap();
 
-        assert_relative_eq!(integral, 1.0, epsilon = 0.01);
+        assert_relative_eq!(integral, 1.0, epsilon = EPS);
     }
 }
 
