@@ -278,6 +278,8 @@ mod model_construction_tests {
     //! Tests for model construction and basic operations
 
     use crate::prelude::*;
+    use approx::assert_relative_eq;
+    use rmath::integrate;
 
     #[test]
     fn test_likelihood_times_prior() {
@@ -349,6 +351,80 @@ mod model_construction_tests {
         // Posterior should integrate to approximately 1
         let integral = posterior.integral().unwrap();
         assert!((integral - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_large_unbounded_cauchy_uses_split_integration() {
+        let likelihood: Likelihood = NoncentralDLikelihood::new(2.0, 100.0).into();
+        let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
+        let model = likelihood * prior;
+
+        assert!(model.is_approximation().needs_approximation());
+        let approximate = model.integral().unwrap();
+
+        let exact_model = model;
+        let exact = integrate!(
+            f = move |x| exact_model.function(x).unwrap(),
+            points = vec![2.0]
+        )
+        .unwrap()
+        .value;
+
+        assert!(approximate.is_approximation());
+        assert!(approximate.value.is_finite());
+        assert!(approximate.value > 0.0);
+        assert_relative_eq!(approximate.value, exact, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_large_noncentral_t_requests_reparameterization() {
+        let likelihood: Likelihood = NoncentralTLikelihood::new(16.0, 30.0).into();
+        let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
+
+        let error = (likelihood * prior).integral().unwrap_err();
+
+        assert!(matches!(
+            &error,
+            IntegralError::NoncentralTReparameterization
+        ));
+        assert!(error.to_string().contains("noncentral_d likelihood with n"));
+        assert!(error
+            .to_string()
+            .contains("noncentral_d2 likelihood with n1 and n2"));
+    }
+
+    #[test]
+    fn test_approximation_checks_bounds_in_effect_size_space() {
+        // d=1 is inside [-2, 2], even though the equivalent t statistic is 10.
+        let likelihood: Likelihood = NoncentralDLikelihood::new(1.0, 100.0).into();
+        let prior: Prior = CauchyPrior::new(0.0, 1.0, (Some(-2.0), Some(2.0))).into();
+
+        let approximation = (likelihood * prior).is_approximation();
+
+        assert!(!approximation.needs_approximation());
+    }
+
+    #[test]
+    fn test_approximation_uses_effect_size_scale_for_interval_correction() {
+        let n: f64 = 1000.0;
+        let likelihood: Likelihood = NoncentralDLikelihood::new(6.0 / n.sqrt(), n).into();
+        let prior: Prior =
+            CauchyPrior::new(0.05, 1.0, (Some(0.0), Some(0.15))).into();
+        let model = likelihood * prior;
+
+        assert!(model.is_approximation().needs_approximation());
+        let approximate = model.integral().unwrap().value;
+
+        let exact_model = model;
+        let exact = integrate!(
+            f = move |x| exact_model.function(x).unwrap(),
+            lower = 0.0,
+            upper = 0.15
+        )
+        .unwrap()
+        .value;
+
+        assert_relative_eq!(approximate, exact, epsilon = 0.001);
     }
 }
 
@@ -479,7 +555,7 @@ mod extended_validation_tests {
 
     #[test]
     fn test_student_t_prior_invalid_df_one() {
-        // df = 1 is invalid — must be > 1
+        // df = 1 is invalid - must be > 1
         let prior = StudentTPrior::new(0.0, 1.0, 1.0, (None, None));
         assert!(matches!(
             prior.validate(),

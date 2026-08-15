@@ -1,4 +1,4 @@
-use statrs::distribution::{Continuous, ContinuousCDF};
+use statrs::distribution::Continuous;
 
 pub struct Dexp {
     pub x: Option<f64>,
@@ -45,6 +45,9 @@ pub fn dexp(x: f64, rate: f64, log: bool) -> Result<f64, &'static str> {
 }
 
 pub fn pexp(q: f64, rate: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
+    statrs::distribution::Exp::new(rate)
+        .map_err(|_| "Error creating Exponential distribution")?;
+
     if q < 0.0 {
         return match (lower_tail, log_p) {
             (true, true) => Ok(f64::NEG_INFINITY),
@@ -93,4 +96,29 @@ pub fn safe_pexp(args: Pexp) -> Result<f64, &'static str> {
         args.log_p
             .ok_or("argument \"log_p\" is missing, with no default")?,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pexp_rejects_invalid_rates() {
+        for rate in [0.0, -1.0, f64::NAN] {
+            assert_eq!(
+                pexp(1.0, rate, true, false),
+                Err("Error creating Exponential distribution")
+            );
+        }
+    }
+
+    #[test]
+    fn pexp_valid_rate_returns_consistent_tails() {
+        let cdf = pexp(1.0, 2.0, true, false).unwrap();
+        let survival = pexp(1.0, 2.0, false, false).unwrap();
+        let log_survival = pexp(1.0, 2.0, false, true).unwrap();
+
+        assert!((cdf + survival - 1.0).abs() < f64::EPSILON);
+        assert!((log_survival + 2.0).abs() < f64::EPSILON);
+    }
 }

@@ -113,11 +113,20 @@ pub enum IntegralError {
     /// A distribution function call failed (e.g. invalid parameters).
     #[error("Distribution error: {0}")]
     Distribution(String),
-    /// `estimate_marginal` requires a prior with explicit finite bounds.
-    #[error("Prior must have finite bounds for estimate_marginal")]
-    UnboundedPrior,
+    
+    // The following errors are surfaced when attempting to approximate
+    // the default t-tests.
+    /// Large noncentral-t models must be expressed in terms of an effect size
+    /// and sample size before the approximation can be computed.
+    #[error(
+        "Large noncentral-t statistics require reparameterization; use a noncentral_d likelihood with n or a noncentral_d2 likelihood with n1 and n2"
+    )]
+    NoncentralTReparameterization,
+    /// The approximation currently supports only Cauchy priors.
+    #[error("estimate_marginal only supports Cauchy priors")]
+    UnsupportedApproximationPrior,
     /// `estimate_marginal` requires a sample size, but the `ApproximateModel` has `n = None`.
-    #[error("ApproximateModel has no sample size (n); estimate_marginal requires n")]
+    #[error("ApproximateModel has no sample size (n); Respecify with a likelihood in terms of n or n1 and n2")]
     MissingN,
 }
 
@@ -353,12 +362,14 @@ impl Model {
         };
 
         let t_likelihood: Likelihood = t_likelihood.into();
-        let observation = t_likelihood.get_observation();
-        let t = observation.unwrap_or(0.0);
+        let t = t_likelihood.get_observation().unwrap_or(0.0);
         let abs_t = t.abs();
 
+        // Prior bounds are expressed in the likelihood's native parameter space:
+        // effect size for noncentral-d/d2, and noncentrality for noncentral-t.
+        let parameter = self.likelihood.get_observation();
         let prior_limits = self.prior.range_or_default();
-        let in_range = observation >= Some(prior_limits.0) && observation <= Some(prior_limits.1);
+        let in_range = parameter >= Some(prior_limits.0) && parameter <= Some(prior_limits.1);
 
         let more_than_15 = abs_t > 15.0;
         let more_than_5 = abs_t > 5.0;
@@ -419,11 +430,18 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
         prior.validate()?;
         likelihood.validate()?;
 
-        if self.is_approximation().needs_approximation() {
-            let result = estimate_marginal(&self.is_approximation(), &self.prior);
-            let marginal_result = result.ok();
-            let marginal = marginal_result.map(|r| r.marginal).unwrap_or(0.0);
-            return Ok(Auc::new(marginal, likelihood, prior, marginal_result));
+        let approximation = self.is_approximation();
+        if approximation.needs_approximation() {
+            if matches!(likelihood, Likelihood::NoncentralT(_)) {
+                return Err(IntegralError::NoncentralTReparameterization);
+            }
+            let marginal_result = estimate_marginal(&approximation, &self.prior)?;
+            return Ok(Auc::new(
+                marginal_result.marginal,
+                likelihood,
+                prior,
+                Some(marginal_result),
+            ));
         }
 
         match prior {
@@ -693,13 +711,13 @@ impl Integrate<IntegralError, anyhow::Error> for Posterior {
 /// decomposes the log-BF into:
 ///
 /// 1. **Interval correction** (`log_bf_interval`): compares how much probability
-///    mass the posterior (approximated as a scaled t) and the prior (Cauchy at
-///    `rscale = prior.scale * √n`) each assign to `[lower, upper]`, working
-///    entirely in log space via `pexp` for numerical stability.
+///    mass the posterior (approximated as a scaled t) and the prior each assign
+///    to `[lower, upper]` in effect-size space, working entirely in log space
+///    via `pexp` for numerical stability.
 ///
 /// 2. **Uncorrected BF** (`log_bf_uncorrected`): the BF for the *unbounded* model
-///    `cauchy(location, rscale, (-∞, ∞))` vs the point null, computed by
-///    numerical integration.
+///    against the point null, computed in noncentrality space by numerical
+///    integration after scaling both Cauchy parameters by `√n`.
 ///
 /// The final BF combines both terms: `log_bf = log_bf_interval + log_bf_uncorrected`.
 ///
@@ -707,12 +725,12 @@ impl Integrate<IntegralError, anyhow::Error> for Posterior {
 ///
 /// * `approx` – an [`ApproximateModel`] supplying `t`, `df`, and `n`
 ///              (constructed via [`Model::is_approximation`])
-/// * `prior`  – a `CauchyPrior` with explicit finite bounds `(Some(lower), Some(upper))`
+/// * `prior`  – an unbounded or truncated `CauchyPrior`
 ///
 /// # Errors
 ///
 /// Returns [`IntegralError::MissingN`] if `approx.n` is `None`.
-/// Returns [`IntegralError::UnboundedPrior`] if `prior.range` is not `(Some(_), Some(_))`.
+/// Returns [`IntegralError::UnsupportedApproximationPrior`] for non-Cauchy priors.
 /// Returns [`IntegralError::Distribution`] if any CDF call fails.
 /// Returns [`IntegralError::Integration`] if numerical integration of the unbounded
 /// model fails.
@@ -735,19 +753,19 @@ pub fn estimate_marginal(
 ) -> Result<MarginalResult, IntegralError> {
     let prior = match prior {
         Prior::Cauchy(cauchy) => cauchy,
-        _ => return Err(IntegralError::UnboundedPrior),
+        _ => return Err(IntegralError::UnsupportedApproximationPrior),
     };
 
     let n = approx.n.ok_or(IntegralError::MissingN)?;
     let t = approx.t;
     let df = approx.df;
-    // Require explicit finite-ish bounds (at least one bound must be Some).
-    // Both must be Some for the interval correction to be well-defined.
+    // Missing bounds represent the full real line. In that case both posterior
+    // and prior interval masses are one, so the interval correction below is zero.
     let (lower, upper) = match prior.range {
         (Some(lo), Some(hi)) => (lo, hi),
         (Some(lo), None) => (lo, f64::INFINITY),
         (None, Some(hi)) => (f64::NEG_INFINITY, hi),
-        _ => return Err(IntegralError::UnboundedPrior),
+        (None, None) => (f64::NEG_INFINITY, f64::INFINITY),
     };
 
     // --- 1. Posterior interval (approximate posterior is a scaled t) ---
@@ -794,16 +812,14 @@ pub fn estimate_marginal(
         )
         .map_err(|e| IntegralError::Distribution(e.to_string()))?;
 
-    // --- 2. Prior interval (Cauchy at scaled rscale) ---
-    let rscale = prior.scale * n.sqrt();
-
+    // --- 2. Prior interval (in the prior's original effect-size space) ---
     let log_prior_lower = if lower == f64::NEG_INFINITY {
         f64::NEG_INFINITY
     } else {
         pcauchy!(
             q = lower,
             location = prior.location,
-            scale = rscale,
+            scale = prior.scale,
             lower_tail = true,
             log_p = true
         )
@@ -816,7 +832,7 @@ pub fn estimate_marginal(
         pcauchy!(
             q = upper,
             location = prior.location,
-            scale = rscale,
+            scale = prior.scale,
             lower_tail = true,
             log_p = true
         )
@@ -846,7 +862,10 @@ pub fn estimate_marginal(
     // boundary exactly at the peak location so the algorithm concentrates subdivisions
     // in the right region. This matches the accuracy achieved by R's QUADPACK
     // (integrate(..., subdivisions=1000, abs.tol=1e-14)).
-    let unbounded_prior: Prior = CauchyPrior::new(prior.location, rscale, (None, None)).into();
+    let sqrt_n = n.sqrt();
+    let rlocation = prior.location * sqrt_n;
+    let rscale = prior.scale * sqrt_n;
+    let unbounded_prior: Prior = CauchyPrior::new(rlocation, rscale, (None, None)).into();
     let new_likelihood: Likelihood = NoncentralTLikelihood::new(t, df).into();
     let unbounded_model = new_likelihood * unbounded_prior;
 

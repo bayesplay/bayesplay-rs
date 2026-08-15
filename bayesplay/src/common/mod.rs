@@ -4,7 +4,7 @@ use approx::{AbsDiffEq, RelativeEq};
 
 use crate::{
     prelude::{Likelihood, MarginalResult},
-    prior::{Prior, TypeOf},
+    prior::Prior,
 };
 
 /// Trait for validating distribution parameters.
@@ -136,6 +136,7 @@ pub struct Auc {
     likelihood: Likelihood,
     prior: Prior,
     approximate_marginal: Option<MarginalResult>,
+    approximation: bool,
 }
 
 impl Auc {
@@ -149,8 +150,25 @@ impl Auc {
             value,
             likelihood,
             prior,
+            approximation: approximate_marginal.is_some(),
             approximate_marginal,
         }
+    }
+
+    pub fn likelihood(&self) -> Likelihood {
+        self.likelihood
+    }
+
+    pub fn prior(&self) -> Prior {
+        self.prior
+    }
+
+    pub fn approximate_marginal(&self) -> Option<MarginalResult> {
+        self.approximate_marginal
+    }
+
+    pub fn is_approximation(&self) -> bool {
+        self.approximation
     }
 }
 
@@ -185,18 +203,6 @@ impl Div for Auc {
     type Output = f64;
 
     fn div(self, rhs: Self) -> Self::Output {
-        if self.approximate_marginal.is_some() || rhs.approximate_marginal.is_some() {
-            match (
-                self.approximate_marginal,
-                self.prior.is_point(),
-                rhs.approximate_marginal,
-                rhs.prior.is_point(),
-            ) {
-                (Some(v), false, None, false) => return v.bf,
-                (None, true, Some(v), false) => return 1.0 / v.bf,
-                _ => {}
-            }
-        }
         self.value / rhs.value
     }
 }
