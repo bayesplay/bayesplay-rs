@@ -44,7 +44,6 @@ pub struct NoncentralDLikelihood {
 use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
-use crate::prelude::Likelihood;
 use crate::prelude::NoncentralTLikelihood;
 
 // use super::NoncentralTLikelihood;

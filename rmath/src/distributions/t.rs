@@ -195,11 +195,17 @@ fn dt(x: f64, df: f64, log_p: bool) -> Result<f64, &'static str> {
 
 fn pt(q: f64, df: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
     let dist = StudentsT::new(0.0, 1.0, df).map_err(|_| "Error creating Student t distribution")?;
+    let sf = dist.sf(q);
+    let cdf = dist.cdf(q);
     match (lower_tail, log_p) {
-        (true, true) => Ok(dist.cdf(q).ln()),
-        (true, false) => Ok(dist.cdf(q)),
-        (false, true) => Ok((1.0 - dist.cdf(q)).ln()),
-        (false, false) => Ok(1.0 - dist.cdf(q)),
+        // Use ln_1p(-sf) instead of cdf.ln() to avoid catastrophic cancellation
+        // when cdf ≈ 1 (large positive q), where cdf = 1 - sf and sf is tiny.
+        (true, true) => Ok((-sf).ln_1p()),
+        (true, false) => Ok(cdf),
+        // Use sf() (survival function) directly instead of 1 - cdf() to avoid
+        // catastrophic cancellation when cdf(q) is very close to 1 (large q).
+        (false, true) => Ok(sf.ln()),
+        (false, false) => Ok(sf),
     }
 }
 

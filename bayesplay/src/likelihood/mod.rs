@@ -330,7 +330,6 @@ impl Validate<LikelihoodError> for Likelihood {
     }
 }
 
-
 #[derive(PartialEq, Debug, Serialize, Clone, Copy)]
 pub enum LikelihoodFamily {
     Normal,
@@ -350,7 +349,6 @@ impl Family<LikelihoodFamily> for Likelihood {
             Likelihood::NoncentralD(_) => LikelihoodFamily::NoncentralD,
             Likelihood::NoncentralD2(_) => LikelihoodFamily::NoncentralD2,
             Likelihood::NoncentralT(_) => LikelihoodFamily::NoncentralT,
-             
-         } 
+        }
     }
 }

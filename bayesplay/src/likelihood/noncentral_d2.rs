@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
-use crate::prelude::Likelihood;
 use crate::prelude::NoncentralTLikelihood;
 
 /// A noncentral d likelihood for two-sample effect sizes (Cohen's d).
