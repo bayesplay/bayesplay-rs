@@ -1,4 +1,4 @@
-use crate::distributions::normal::dnorm;
+use crate::distributions::normal::{dnorm, pnorm};
 
 use statrs::distribution::{Beta, Normal, StudentsT};
 use statrs::distribution::{Continuous, ContinuousCDF};
@@ -47,11 +47,7 @@ pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static st
         }
     };
 
-    if give_log {
-        Ok(u)
-    } else {
-        Ok(u.exp())
-    }
+    if give_log { Ok(u) } else { Ok(u.exp()) }
 }
 
 pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
@@ -59,6 +55,10 @@ pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f
     let errmax = 1e-12;
 
     let mut tnc = 0.0;
+
+    if q.is_nan() || df.is_nan() || ncp.is_nan() {
+        return Ok(f64::NAN);
+    }
 
     if df <= 0.0 {
         return Ok(f64::NAN);
@@ -69,7 +69,7 @@ pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f
     };
 
     if q.is_infinite() {
-        return Ok(f64::NAN);
+        return Ok(r_dt_0(lower_tail == q.is_sign_negative(), log_p));
     }
 
     let negdel = q.is_sign_negative();
@@ -85,15 +85,14 @@ pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f
     }
 
     if df > 4e5 || del * del > 2.0 * LN_2 * -1.0 * DBL_MIN_EXP {
-        let _s = 1.0 / (4.0 * df);
-
-        let pnorm = Normal::new(del, (1.0 + tt * tt * 2.0 * _s).sqrt())
-            .map_err(|_| "Error creating Normal distribution")?;
-
-        match log_p {
-            true => return Ok(pnorm.cdf(tt * (1.0 - _s)).ln()),
-            false => return Ok(pnorm.cdf(tt * (1.0 - _s))),
-        }
+        let s = 1.0 / (4.0 * df);
+        return pnorm(
+            tt * (1.0 - s),
+            del,
+            1.0_f64.hypot(tt * (2.0 * s).sqrt()),
+            lower_tail != negdel,
+            log_p,
+        );
     }
 
     let mut x = q * q;
@@ -200,11 +199,11 @@ fn pt(q: f64, df: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static st
     match (lower_tail, log_p) {
         // Use ln_1p(-sf) instead of cdf.ln() to avoid catastrophic cancellation
         // when cdf ≈ 1 (large positive q), where cdf = 1 - sf and sf is tiny.
-        (true, true) => Ok((-sf).ln_1p()),
+        (true, true) => Ok(if q > 0.0 { (-sf).ln_1p() } else { cdf.ln() }),
         (true, false) => Ok(cdf),
         // Use sf() (survival function) directly instead of 1 - cdf() to avoid
         // catastrophic cancellation when cdf(q) is very close to 1 (large q).
-        (false, true) => Ok(sf.ln()),
+        (false, true) => Ok(if q < 0.0 { (-cdf).ln_1p() } else { sf.ln() }),
         (false, false) => Ok(sf),
     }
 }
@@ -346,7 +345,10 @@ pub fn pt_scaled(args: PtScaled) -> Result<f64, &'static str> {
     let log_p = args
         .log_p
         .ok_or("argument \"log_p\" is missing, with no default")?;
-    pt(q, df, lower_tail, log_p)
+    match args.ncp {
+        Some(ncp) => pnt(q, df, ncp, lower_tail, log_p),
+        None => pt(q, df, lower_tail, log_p),
+    }
 }
 
 pub fn dt_scaled(args: DtScaled) -> Result<f64, &'static str> {
@@ -364,7 +366,11 @@ pub fn dt_scaled(args: DtScaled) -> Result<f64, &'static str> {
     let log = args
         .log
         .ok_or("argument \"log\" is missing, with no default")?;
-    Ok(dt(x, df, log)? / sd)
+    let density = match args.ncp {
+        Some(ncp) => dnt(x, df, ncp, log)?,
+        None => dt(x, df, log)?,
+    };
+    Ok(if log { density - sd.ln() } else { density / sd })
 }
 
 pub fn safe_dt(args: Dt) -> Result<f64, &'static str> {
@@ -419,6 +425,92 @@ mod tests {
 
     use super::*;
     use approx_eq::assert_approx_eq;
+
+    #[test]
+    fn scaled_helpers_preserve_noncentrality_and_log_jacobian() {
+        for ncp in [None, Some(0.0), Some(2.0)] {
+            let expected = dnt(0.5, 7.0, ncp.unwrap_or(0.0), false).unwrap() / 3.0;
+            for log in [false, true] {
+                let got = dt_scaled(DtScaled {
+                    x: Some(5.5),
+                    df: Some(7.0),
+                    mean: Some(4.0),
+                    sd: Some(3.0),
+                    ncp,
+                    log: Some(log),
+                })
+                .unwrap();
+                let want = if log { expected.ln() } else { expected };
+                assert!((got - want).abs() < 1e-12);
+            }
+            for lower_tail in [false, true] {
+                for log_p in [false, true] {
+                    let got = pt_scaled(PtScaled {
+                        q: Some(5.5),
+                        df: Some(7.0),
+                        mean: Some(4.0),
+                        sd: Some(3.0),
+                        ncp,
+                        lower_tail: Some(lower_tail),
+                        log_p: Some(log_p),
+                    })
+                    .unwrap();
+                    let want = pnt(0.5, 7.0, ncp.unwrap_or(0.0), lower_tail, log_p).unwrap();
+                    assert_eq!(got, want);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn noncentral_approximation_respects_reflection_and_tail() {
+        for (df, ncp, q) in [(1e6, 2.0, 1.0), (10.0, 40.0, 39.0)] {
+            for sign in [-1.0, 1.0] {
+                for lower_tail in [false, true] {
+                    for log_p in [false, true] {
+                        let s = 1.0 / (4.0 * df);
+                        let want = pnorm(
+                            sign * q * (1.0 - s),
+                            sign * ncp,
+                            (1.0 + q * q * 2.0 * s).sqrt(),
+                            lower_tail,
+                            log_p,
+                        )
+                        .unwrap();
+                        let got = pnt(sign * q, df, sign * ncp, lower_tail, log_p).unwrap();
+                        assert!((got - want).abs() < 1e-12, "{got} != {want}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn noncentral_infinite_quantiles_and_nan() {
+        for df in [5.0, 1e6, f64::INFINITY] {
+            for ncp in [-2.0, 0.0, 2.0] {
+                for q in [f64::NEG_INFINITY, f64::INFINITY] {
+                    for lower_tail in [false, true] {
+                        let want: f64 = if lower_tail == (q > 0.0) { 1.0 } else { 0.0 };
+                        assert_eq!(pnt(q, df, ncp, lower_tail, false).unwrap(), want);
+                        assert_eq!(pnt(q, df, ncp, lower_tail, true).unwrap(), want.ln());
+                    }
+                }
+            }
+        }
+        assert!(pnt(f64::NAN, 5.0, 2.0, true, false).unwrap().is_nan());
+    }
+
+    #[test]
+    fn central_log_tails_preserve_small_probabilities() {
+        let small = pt(-1e4, 5.0, true, false).unwrap();
+        assert!(small > 0.0 && small < f64::EPSILON);
+        assert_eq!(pt(-1e4, 5.0, true, true).unwrap(), small.ln());
+        assert_eq!(pt(1e4, 5.0, false, true).unwrap(), small.ln());
+        assert_eq!(pt(1e4, 5.0, true, true).unwrap(), (-small).ln_1p());
+        assert_eq!(pt(-1e4, 5.0, false, true).unwrap(), (-small).ln_1p());
+    }
+
     #[test]
 
     fn test_dt() {
