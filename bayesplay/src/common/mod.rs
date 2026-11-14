@@ -330,8 +330,11 @@ pub fn truncated_normalization<E>(
         (true, false) => cdf(upper, true),  // P(X < upper) = F(upper)
         (false, false) => {
             let p_lower = cdf(lower, true)?;
-            let p_upper = cdf(upper, true)?;
-            Ok(p_upper - p_lower)
+            if p_lower <= 0.5 {
+                Ok(cdf(upper, true)? - p_lower)
+            } else {
+                Ok(cdf(lower, false)? - cdf(upper, false)?)
+            }
         }
     }
 }
