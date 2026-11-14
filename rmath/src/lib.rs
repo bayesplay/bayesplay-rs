@@ -1,6 +1,8 @@
 pub mod distributions;
 pub mod integration;
 
+pub use distributions::beta::lbeta;
+
 #[macro_export]
 macro_rules! dbeta {
     ($($a:tt = $c:expr ),*) => {
