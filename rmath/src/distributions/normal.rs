@@ -49,10 +49,18 @@ pub fn pnorm(
         .map_err(|_| "Error creating Normal distribution")?;
 
     match (lower_tail, log_p) {
-        (true, true) => Ok(dist.cdf(q).ln()),
+        (true, true) => Ok(if q > mean {
+            (-dist.sf(q)).ln_1p()
+        } else {
+            dist.cdf(q).ln()
+        }),
         (true, false) => Ok(dist.cdf(q)),
-        (false, true) => Ok((1.0 - dist.cdf(q)).ln()),
-        (false, false) => Ok(1.0 - dist.cdf(q)),
+        (false, true) => Ok(if q < mean {
+            (-dist.cdf(q)).ln_1p()
+        } else {
+            dist.sf(q).ln()
+        }),
+        (false, false) => Ok(dist.sf(q)),
     }
 }
 
@@ -61,7 +69,7 @@ pub fn dnorm(x: f64, mean: f64, sd: f64, log: bool) -> Result<f64, &'static str>
         .map_err(|_| "Error creating Normal distribution")?;
 
     match log {
-        true => Ok(dist.pdf(x).ln()),
+        true => Ok(dist.ln_pdf(x)),
         false => Ok(dist.pdf(x)),
     }
 }
@@ -92,4 +100,33 @@ pub fn safe_pnorm(args: Pnorm) -> Result<f64, &'static str> {
         args.log_p
             .ok_or("argument \"give_log\" is missing, with no default")?,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extreme_tails_and_truncation_mass() {
+        let small = pnorm(10.0, 0.0, 1.0, false, false).unwrap();
+        let want = 7.619_853_024_160_47e-24;
+        assert!((small / want - 1.0).abs() < 1e-9);
+        assert_eq!(pnorm(-10.0, 0.0, 1.0, true, false).unwrap(), small);
+        assert_eq!(pnorm(-10.0, 0.0, 1.0, true, true).unwrap(), small.ln());
+        assert_eq!(pnorm(10.0, 0.0, 1.0, false, true).unwrap(), small.ln());
+        assert_eq!(pnorm(10.0, 0.0, 1.0, true, true).unwrap(), (-small).ln_1p());
+        assert_eq!(
+            pnorm(-10.0, 0.0, 1.0, false, true).unwrap(),
+            (-small).ln_1p()
+        );
+        let mass = small - pnorm(11.0, 0.0, 1.0, false, false).unwrap();
+        assert!(mass > 0.0 && mass < small);
+    }
+
+    #[test]
+    fn log_density_does_not_underflow() {
+        let got = dnorm(40.0, 0.0, 1.0, true).unwrap();
+        let want = -800.0 - 0.5 * (2.0 * core::f64::consts::PI).ln();
+        assert!((got - want).abs() < 1e-12);
+    }
 }
