@@ -1,4 +1,5 @@
-use rmath::dbeta;
+use crate::common::truncated_normalization;
+use rmath::{dbeta, pbeta};
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -18,8 +19,8 @@ use super::PriorError;
 ///
 /// # Parameters
 ///
-/// * `alpha` - First shape parameter (must be non-negative)
-/// * `beta` - Second shape parameter (must be non-negative)
+/// * `alpha` - First shape parameter (must be finite and positive)
+/// * `beta` - Second shape parameter (must be finite and positive)
 /// * `range` - Optional bounds (must be within [0, 1])
 ///
 /// # Common Parameterizations
@@ -73,8 +74,8 @@ impl BetaPrior {
     ///
     /// # Arguments
     ///
-    /// * `alpha` - First shape parameter (must be non-negative)
-    /// * `beta` - Second shape parameter (must be non-negative)
+    /// * `alpha` - First shape parameter (must be finite and positive)
+    /// * `beta` - Second shape parameter (must be finite and positive)
     /// * `range` - Optional bounds (must be within [0, 1])
     ///
     /// # Examples
@@ -107,9 +108,9 @@ impl Range for BetaPrior {
 /// Validates the Beta prior parameters.
 ///
 /// Ensures:
-/// 1. Both shape parameters are non-negative
+/// 1. Both shape parameters are finite and positive
 /// 2. The range bounds are within [0, 1]
-/// 3. The range bounds are not equal
+/// 3. The lower bound is strictly below the upper bound
 ///
 /// # Examples
 ///
@@ -133,19 +134,19 @@ impl Validate<PriorError> for BetaPrior {
         let mut errors: Vec<PriorError> = Vec::new();
         let (lower, upper) = self.range_or_default();
 
-        if lower < 0.0 || upper > 1.0 {
+        if !lower.is_finite() || !upper.is_finite() || lower < 0.0 || upper > 1.0 {
             errors.push(PriorError::InvalidRangeBounds);
         }
 
-        if self.alpha.is_sign_negative() {
+        if !self.alpha.is_finite() || self.alpha <= 0.0 {
             errors.push(PriorError::InvalidShapeParameter(self.alpha));
         }
 
-        if self.beta.is_sign_negative() {
+        if !self.beta.is_finite() || self.beta <= 0.0 {
             errors.push(PriorError::InvalidShapeParameter(self.beta));
         }
 
-        if lower == upper {
+        if lower >= upper {
             errors.push(PriorError::InvalidRange);
         }
 
@@ -157,9 +158,8 @@ impl Validate<PriorError> for BetaPrior {
 ///
 /// Returns an error if x is outside [0, 1].
 ///
-/// # Note
-///
-/// Truncated Beta priors are not currently supported.
+/// Within [0, 1], values outside the truncation interval have zero density.
+/// Inside the interval, the density is divided by its prior probability mass.
 ///
 /// # Examples
 ///
@@ -180,36 +180,38 @@ impl Function<f64, f64, PriorError> for BetaPrior {
     fn function(&self, x: f64) -> Result<f64, PriorError> {
         self.validate()?;
 
-        // Truncated betas are not currently supported
-        if !self.has_default_range() {
-            return Err(PriorError::InvalidRange);
-        };
-
-        let shape1 = self.alpha;
-        let shape2 = self.beta;
-        let k = 1.0;
-
         if !(0.0..=1.0).contains(&x) {
             Err(PriorError::InvalidValue(x, 0.0, 1.0))?;
         }
 
-        Ok(dbeta!(x = x, shape1 = shape1, shape2 = shape2)
+        let (lower, upper) = self.range_or_default();
+        if !(lower..=upper).contains(&x) {
+            return Ok(0.0);
+        }
+        Ok(dbeta!(x = x, shape1 = self.alpha, shape2 = self.beta)
             .map_err(PriorError::DistributionError)?
-            * k)
+            / self.normalize()?)
     }
 }
 
-/// Beta priors over the full [0, 1] range are already normalized.
-///
-/// # Note
-///
-/// Truncated Beta priors are not currently supported and will panic.
+/// Probability mass of the truncation interval under the untruncated Beta prior.
 impl Normalize for BetaPrior {
     fn normalize(&self) -> Result<f64, PriorError> {
-        if !self.has_default_range() {
-            todo!("Truncated beta priors are not allowed!")
+        self.validate()?;
+        let (lower, upper) = self.range_or_default();
+        let mass = truncated_normalization(lower, upper, |q, lower_tail| {
+            pbeta!(
+                q = q,
+                shape1 = self.alpha,
+                shape2 = self.beta,
+                lower_tail = lower_tail
+            )
+            .map_err(PriorError::DistributionError)
+        })?;
+        if !mass.is_finite() || mass <= 0.0 {
+            return Err(PriorError::NormalizingError);
         }
-        Ok(1.0)
+        Ok(mass)
     }
 }
 
@@ -218,6 +220,63 @@ mod tests {
     use super::*;
     use crate::prior::Prior;
     use approx::assert_relative_eq;
+
+    #[test]
+    fn truncated_beta_density_and_tail_mass() {
+        let prior = BetaPrior::new(2.0, 2.0, (Some(0.25), Some(0.75)));
+        assert_relative_eq!(prior.normalize().unwrap(), 11.0 / 16.0, epsilon = 1e-14);
+        assert_relative_eq!(prior.function(0.5).unwrap(), 24.0 / 11.0, epsilon = 1e-14);
+        assert_eq!(prior.function(0.2).unwrap(), 0.0);
+        assert_eq!(prior.function(0.8).unwrap(), 0.0);
+        let tail = BetaPrior::new(1.0, 5.0, (Some(0.999), None));
+        assert_relative_eq!(
+            tail.normalize().unwrap(),
+            (1.0_f64 - 0.999).powi(5),
+            max_relative = 1e-12
+        );
+        let lower = BetaPrior::new(2.0, 1.0, (None, Some(0.5)));
+        assert_relative_eq!(lower.normalize().unwrap(), 0.25, epsilon = 1e-14);
+    }
+
+    #[test]
+    fn truncated_beta_binomial_model_matches_polynomial_integral() {
+        use crate::prelude::*;
+        let likelihood: Likelihood = BinomialLikelihood::new(1.0, 1.0).into();
+        let prior: Prior = BetaPrior::new(2.0, 1.0, (Some(0.5), None)).into();
+        let model = likelihood * prior;
+        assert_relative_eq!(model.integral().unwrap().value, 7.0 / 9.0, epsilon = 1e-12);
+        let posterior = model.posterior().unwrap();
+        assert_relative_eq!(
+            posterior.integrate(None, Some(0.75)).unwrap(),
+            19.0 / 56.0,
+            epsilon = 1e-12
+        );
+        assert_eq!(posterior.function(0.25).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn invalid_beta_parameters_return_errors_without_panicking() {
+        for shape in [0.0, -1.0, f64::INFINITY, f64::NAN] {
+            assert!(
+                BetaPrior::new(shape, 1.0, (None, None))
+                    .normalize()
+                    .is_err()
+            );
+            assert!(
+                BetaPrior::new(1.0, shape, (None, None))
+                    .normalize()
+                    .is_err()
+            );
+        }
+        for bounds in [
+            (Some(0.8), Some(0.2)),
+            (Some(0.5), Some(0.5)),
+            (Some(f64::NAN), None),
+            (None, Some(f64::INFINITY)),
+        ] {
+            assert!(BetaPrior::new(1.0, 1.0, bounds).normalize().is_err());
+        }
+    }
 
     #[test]
     fn test_beta_prior_creation() {

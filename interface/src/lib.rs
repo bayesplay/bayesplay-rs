@@ -507,3 +507,25 @@ impl TryFrom<PriorInterface> for Prior {
         Ok(prior)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncated_beta_prior_json_supports_density_and_marginal() {
+        let prior = prior_from_json(
+            r#"{"family":"beta","params":[{"name":"alpha","value":2},{"name":"beta","value":1},{"name":"ll","value":0.5}]}"#,
+        );
+        assert_eq!(prior.function(0.25).unwrap(), 0.0);
+        assert!((prior.function(0.75).unwrap() - 2.0).abs() < 1e-12);
+        let likelihood: Likelihood = BinomialLikelihood::new(1.0, 1.0).into();
+        assert!(((likelihood * prior).integral().unwrap().value - 7.0 / 9.0).abs() < 1e-12);
+    }
+
+    fn prior_from_json(json: &str) -> Prior {
+        let interface: PriorInterface =
+            serde_json::from_str(json).expect("prior JSON should deserialize");
+        Prior::try_from(interface).expect("prior interface should convert")
+    }
+}
