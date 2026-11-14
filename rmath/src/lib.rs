@@ -26,6 +26,18 @@ macro_rules! pbeta {
 }
 
 #[macro_export]
+macro_rules! dchisq {
+    ($($a:tt = $c:expr ),*) => {
+    $crate::distributions::chi_squared::safe_dchisq(
+       #[allow(clippy::needless_update)]
+       $crate::distributions::chi_squared::Dchisq {
+           $($a: Some($c),)*
+        ..Default::default()
+       })
+    }
+}
+
+#[macro_export]
 macro_rules! dt {
     ($($a:tt = $c:expr ),*) => {
    $crate::distributions::t::safe_dt(

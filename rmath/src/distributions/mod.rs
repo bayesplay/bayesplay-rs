@@ -11,3 +11,4 @@ pub mod binomial;
 pub mod uniform;
 
 pub mod exponential;
+pub mod chi_squared;
