@@ -133,6 +133,8 @@ pub trait Range {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Auc {
     pub value: f64,
+    /// Natural logarithm of the raw integral, retained even if `value` underflows.
+    pub log_value: f64,
     likelihood: Likelihood,
     prior: Prior,
     approximate_marginal: Option<MarginalResult>,
@@ -148,6 +150,7 @@ impl Auc {
     ) -> Self {
         Self {
             value,
+            log_value: value.ln(),
             likelihood,
             prior,
             approximation: approximate_marginal.is_some(),
@@ -169,6 +172,13 @@ impl Auc {
 
     pub fn is_approximation(&self) -> bool {
         self.approximation
+    }
+
+    pub(crate) fn from_log(log_value: f64, likelihood: Likelihood, prior: Prior) -> Self {
+        Self {
+            log_value,
+            ..Self::new(log_value.exp(), likelihood, prior, None)
+        }
     }
 }
 
@@ -203,6 +213,9 @@ impl Div for Auc {
     type Output = f64;
 
     fn div(self, rhs: Self) -> Self::Output {
+        if !self.value.is_normal() || !rhs.value.is_normal() {
+            return (self.log_value - rhs.log_value).exp();
+        }
         self.value / rhs.value
     }
 }
@@ -341,4 +354,43 @@ pub fn truncated_normalization<E>(
 
 pub trait Family<T> {
     fn family(&self) -> T;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prelude::*;
+
+    #[test]
+    fn division_uses_both_marginals_not_approximation_bf() {
+        let likelihood = NormalLikelihood::new(0.0, 1.0).into();
+        let prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+        let approximate = Auc::new(
+            6.0,
+            likelihood,
+            prior,
+            Some(MarginalResult {
+                marginal: 6.0,
+                bf: 99.0,
+            }),
+        );
+        let exact = Auc::new(2.0, likelihood, prior, None);
+        let point = Auc::new(3.0, likelihood, PointPrior::new(1.0).into(), None);
+        assert_eq!(approximate / exact, 3.0);
+        assert_eq!(point / approximate, 0.5);
+        assert_eq!(approximate / point, 2.0);
+        assert_eq!(approximate / approximate, 1.0);
+    }
+
+    #[test]
+    fn division_retains_ratios_of_underflowed_and_overflowed_marginals() {
+        let likelihood = NormalLikelihood::new(0.0, 1.0).into();
+        let prior = PointPrior::new(0.0).into();
+        for scale in [-1000.0, 1000.0] {
+            let a = Auc::from_log(scale + 2.0_f64.ln(), likelihood, prior);
+            let b = Auc::from_log(scale, likelihood, prior);
+            approx::assert_relative_eq!(a / b, 2.0, epsilon = 1e-12);
+            approx::assert_relative_eq!(b / a, 0.5, epsilon = 1e-12);
+        }
+    }
 }
