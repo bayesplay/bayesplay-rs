@@ -14,6 +14,7 @@
 //! | [`NoncentralDLikelihood`] | One-sample effect size | d, n |
 //! | [`NoncentralD2Likelihood`] | Two-sample effect size | d, n1, n2 |
 //! | [`NoncentralTLikelihood`] | Noncentral t data | t, df |
+//! | [`VarianceRatioLikelihood`] | Variance ratio against a reference | u, df |
 //!
 //! # Examples
 //!
@@ -38,6 +39,7 @@ pub(crate) mod noncentral_d2;
 pub(crate) mod noncentral_t;
 pub(crate) mod normal;
 pub(crate) mod student_t;
+pub(crate) mod variance_ratio;
 
 use crate::common::Family;
 use crate::common::Function;
@@ -49,6 +51,7 @@ pub use noncentral_d2::NoncentralD2Likelihood;
 pub use noncentral_t::NoncentralTLikelihood;
 pub use normal::NormalLikelihood;
 pub use student_t::StudentTLikelihood;
+pub use variance_ratio::VarianceRatioLikelihood;
 
 use serde::{Deserialize, Serialize};
 
@@ -97,6 +100,8 @@ pub enum LikelihoodError {
     InvalidSuccess(f64),
     #[error("DF value of {0} is invalid. DF must be positive")]
     InvalidDF(f64),
+    #[error("U value of {0} is invalid. U must be positive")]
+    InvalidU(f64),
     #[error("Invalid probability value of {0}. Probability must be between 0 and 1")]
     InvalidProbability(f64),
     #[error("Error with distribution: {0}")]
@@ -151,6 +156,7 @@ pub trait Observation {
     /// - `NoncentralDLikelihood`/`NoncentralD2Likelihood`: the effect size d
     /// - `StudentTLikelihood`: the mean
     /// - `NoncentralTLikelihood`: the t statistic
+    /// - `VarianceRatioLikelihood`: the observed variance ratio
     fn update_observation(&mut self, observation: f64);
 
     /// Returns the current observed data value.
@@ -206,6 +212,11 @@ impl LikelihoodFn for NoncentralTLikelihood {
     }
 }
 
+impl LikelihoodFn for VarianceRatioLikelihood {
+    fn likelihood_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        Function::function(self, x)
+    }
+}
 impl LikelihoodValidate for NormalLikelihood {
     fn likelihood_validate(&self) -> Result<(), LikelihoodError> {
         Validate::validate(self)
@@ -237,6 +248,12 @@ impl LikelihoodValidate for NoncentralD2Likelihood {
 }
 
 impl LikelihoodValidate for NoncentralTLikelihood {
+    fn likelihood_validate(&self) -> Result<(), LikelihoodError> {
+        Validate::validate(self)
+    }
+}
+
+impl LikelihoodValidate for VarianceRatioLikelihood {
     fn likelihood_validate(&self) -> Result<(), LikelihoodError> {
         Validate::validate(self)
     }
@@ -304,6 +321,8 @@ pub enum Likelihood {
     NoncentralD2(NoncentralD2Likelihood),
     /// Noncentral t likelihood.
     NoncentralT(NoncentralTLikelihood),
+    /// Likelihood for a population variance ratio.
+    VarianceRatio(VarianceRatioLikelihood),
 }
 
 // Note: From implementations are generated automatically by enum_dispatch
@@ -338,6 +357,7 @@ pub enum LikelihoodFamily {
     NoncentralD2,
     NoncentralT,
     Binomial,
+    VarianceRatio,
 }
 
 impl Family<LikelihoodFamily> for Likelihood {
@@ -349,6 +369,27 @@ impl Family<LikelihoodFamily> for Likelihood {
             Likelihood::NoncentralD(_) => LikelihoodFamily::NoncentralD,
             Likelihood::NoncentralD2(_) => LikelihoodFamily::NoncentralD2,
             Likelihood::NoncentralT(_) => LikelihoodFamily::NoncentralT,
+            Likelihood::VarianceRatio(_) => LikelihoodFamily::VarianceRatio,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn variance_likelihood_families_dispatch() {
+        let cases = [
+            (
+                Likelihood::from(VarianceRatioLikelihood::new(1.2, 9.0)),
+                LikelihoodFamily::VarianceRatio,
+            ),
+        ];
+
+        for (likelihood, expected) in cases {
+            assert_eq!(likelihood.family(), expected);
+            assert!(likelihood.validate().is_ok());
         }
     }
 }

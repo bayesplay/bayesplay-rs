@@ -45,6 +45,7 @@
 //! - [`prelude::NoncentralDLikelihood`] - For one-sample effect sizes (Cohen's d)
 //! - [`prelude::NoncentralD2Likelihood`] - For two-sample effect sizes
 //! - [`prelude::NoncentralTLikelihood`] - For noncentral t-distributed data
+//! - [`prelude::VarianceRatioLikelihood`] - For a variance relative to a reference
 //!
 //! ### Priors
 //!
@@ -106,6 +107,7 @@ mod prior;
 pub mod prelude {
 
     // Common traits
+    pub use crate::common::Family;
     pub use crate::common::Function;
     pub use crate::common::Integrate;
     pub use crate::common::Range;
@@ -114,6 +116,7 @@ pub mod prelude {
     // General likelihood
     pub use crate::likelihood::Likelihood;
     pub use crate::likelihood::LikelihoodError;
+    pub use crate::likelihood::LikelihoodFamily;
     pub use crate::likelihood::LikelihoodResult;
     pub use crate::likelihood::Observation;
 
@@ -124,6 +127,7 @@ pub mod prelude {
     pub use crate::likelihood::NoncentralTLikelihood;
     pub use crate::likelihood::NormalLikelihood;
     pub use crate::likelihood::StudentTLikelihood;
+    pub use crate::likelihood::VarianceRatioLikelihood;
 
     // General prior
     pub use crate::prior::Normalize;
