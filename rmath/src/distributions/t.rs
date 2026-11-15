@@ -9,7 +9,7 @@ const M_LN_SQRT_PI: f64 = 0.572_364_942_924_700_1;
 const DBL_MIN_EXP: f64 = -1021.0;
 const LN_2: f64 = core::f64::consts::LN_2;
 const M_SQRT_2D_PI: f64 = 0.797_884_560_802_865_4;
-const DBL_EPSILON: f64 = 2.7755575615628914e-17;
+const DBL_EPSILON: f64 = f64::EPSILON; // 2.22e-16, as in R's C headers
 
 pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static str> {
     if x.is_nan() || df.is_nan() || ncp.is_nan() {
@@ -47,7 +47,64 @@ pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static st
         }
     };
 
+    // The pnt() difference above cancels catastrophically when the density is tiny
+    // (e.g. x and ncp of opposite sign, far tails): pnt() carries ~1e-13 absolute
+    // error, which R reports as "full precision may not have been achieved".
+    // Below the threshold use a positive-integrand representation instead.
+    if !(u.is_finite() && u > DNT_CANCELLATION_LOG_THRESHOLD) {
+        if let Some(accurate) = dnt_by_integration(x, df, ncp) {
+            return Ok(if give_log { accurate } else { accurate.exp() });
+        }
+    }
+
     if give_log { Ok(u) } else { Ok(u.exp()) }
+}
+
+/// ln(1e-3): densities below this are recomputed by integration. pnt() is good to
+/// ~1e-13 absolute, so above 1e-3 the relative error is <= 1e-10, below the
+/// quadrature tolerances used downstream (a seam at a lower threshold shows up
+/// as a roundoff error in the integrator).
+const DNT_CANCELLATION_LOG_THRESHOLD: f64 = -6.907_755_278_982_137;
+
+/// log of the noncentral-t density via
+///   f(x) = integral_0^inf  s * phi(x s - ncp) * h(s) ds,
+/// where s = sqrt(V/df), V ~ chi^2_df has density h(s) (so T = Z'/s, Z' ~ N(ncp, 1)).
+/// Every term is positive, so there is no cancellation. The integrand is scaled
+/// by its (closed-form) mode so deep tails do not underflow.
+fn dnt_by_integration(x: f64, df: f64, ncp: f64) -> Option<f64> {
+    use crate::integration::{Integrate, integratewrapper};
+
+    let half_df = df / 2.0;
+    let ln_h_const = LN_2 + half_df * half_df.ln() - ln_gamma(half_df);
+    let ln_norm = 0.5 * (2.0 * core::f64::consts::PI).ln();
+    let log_integrand = move |s: f64| -> f64 {
+        let z = x * s - ncp;
+        s.ln() - 0.5 * z * z - ln_norm + ln_h_const + (df - 1.0) * s.ln() - df * s * s / 2.0
+    };
+
+    // d/ds log integrand = 0  <=>  (df + x^2) s^2 - x*ncp*s - df = 0
+    let a = df + x * x;
+    let b = x * ncp;
+    let mode = (b + (b * b + 4.0 * df * a).sqrt()) / (2.0 * a);
+    if !(mode.is_finite() && mode > 0.0) {
+        return None;
+    }
+    let peak = log_integrand(mode);
+    let width = 1.0 / (a + df).sqrt(); // scale of the peak (curvature >= a + df)
+    let upper = mode + 40.0 * width;
+    let result = integratewrapper(Integrate {
+        f: Some(move |s: f64| if s <= 0.0 { 0.0 } else { (log_integrand(s) - peak).exp() }),
+        lower: Some((mode - 40.0 * width).max(0.0)),
+        upper: Some(upper),
+        points: Some(vec![mode]),
+        // integrand is scaled to a peak of 1, so abs_tol is effectively relative too;
+        // a purely relative tolerance trips the roundoff detector on the ~0 tails
+        abs_tol: Some(1e-13),
+        rel_tol: Some(1e-10),
+        ..Default::default()
+    })
+    .ok()?;
+    (result.value > 0.0 && result.value.is_finite()).then(|| peak + result.value.ln())
 }
 
 pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
@@ -425,6 +482,28 @@ mod tests {
 
     use super::*;
     use approx_eq::assert_approx_eq;
+
+    #[test]
+    fn noncentral_density_far_tail_is_smooth_and_matches_integral_reference() {
+        // Reference values from R: integrating the positive mixture representation
+        // at high precision (R's own dt(ncp=) returns cancellation noise here:
+        // 5.5e-13 and 9.0e-14 where the true values are 3.269e-13 and 2.067e-31).
+        let df = 79.0;
+        for (ncp_over_sqrt_n, expected) in [
+            (0.2, 3.021158e-6),
+            (0.5, 3.269087e-13),
+            (1.0, 2.067437e-31),
+            (2.0, 1.15111e-92),
+        ] {
+            let got = dnt(-3.2, df, ncp_over_sqrt_n * 80f64.sqrt(), false).unwrap();
+            assert!((got / expected - 1.0).abs() < 1e-5, "ncp={ncp_over_sqrt_n}: {got:e} vs {expected:e}");
+        }
+        // log density decreases monotonically through the former noise floor
+        let logs: Vec<f64> = (0..300)
+            .map(|i| dnt(-3.2, df, i as f64 * 0.01 * 80f64.sqrt(), true).unwrap())
+            .collect();
+        assert!(logs.windows(2).all(|w| w[1] <= w[0] + 1e-9));
+    }
 
     #[test]
     fn scaled_helpers_preserve_noncentrality_and_log_jacobian() {
