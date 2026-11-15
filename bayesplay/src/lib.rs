@@ -53,6 +53,7 @@
 //! - [`prelude::StudentTPrior`] - Student's t prior
 //! - [`prelude::UniformPrior`] - Uniform prior over an interval
 //! - [`prelude::BetaPrior`] - Beta prior (for probabilities)
+//! - [`prelude::BetaPrimePrior`] - Symmetric beta-prime prior for a positive ratio
 //! - [`prelude::PointPrior`] - Point mass prior (for null hypotheses)
 //!
 //! ## Truncated Distributions
@@ -133,6 +134,7 @@ pub mod prelude {
     pub use crate::prior::TypeOf;
 
     // Specific prior
+    pub use crate::prior::BetaPrimePrior;
     pub use crate::prior::BetaPrior;
     pub use crate::prior::CauchyPrior;
     pub use crate::prior::NormalPrior;
@@ -143,9 +145,9 @@ pub mod prelude {
     // For computing Bayes factors
     pub use crate::compute::model::Model;
 
-    pub use crate::compute::model::estimate_marginal;
     pub use crate::compute::model::ApproximateModel;
     pub use crate::compute::model::IntegralError;
     pub use crate::compute::model::MarginalResult;
     pub use crate::compute::model::Posterior;
+    pub use crate::compute::model::estimate_marginal;
 }

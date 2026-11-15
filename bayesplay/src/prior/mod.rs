@@ -13,6 +13,7 @@
 //! | [`StudentTPrior`] | Adjustable tail weight | mean, sd, df |
 //! | [`UniformPrior`] | Equal probability in interval | min, max |
 //! | [`BetaPrior`] | Probabilities (0-1) | alpha, beta |
+//! | [`BetaPrimePrior`] | Positive ratios | alpha |
 //! | [`PointPrior`] | Point null hypothesis | point |
 //!
 //! # Truncation
@@ -56,6 +57,7 @@ use rmath::integrate;
 use thiserror::Error;
 
 pub mod beta;
+pub mod beta_prime;
 pub mod cauchy;
 pub mod normal;
 pub mod point;
@@ -72,6 +74,7 @@ use crate::compute::model::IntegralError;
 use crate::likelihood::NormalLikelihood;
 
 pub use beta::BetaPrior;
+pub use beta_prime::BetaPrimePrior;
 pub use cauchy::CauchyPrior;
 pub use normal::NormalPrior;
 pub use point::PointPrior;
@@ -108,13 +111,19 @@ pub enum PriorError {
     InvalidStandardDeviation(f64),
     #[error("Invalid scale ({0}). Must be positive.")]
     InvalidScale(f64),
+    #[error("Invalid rate ({0}). Must be positive.")]
+    InvalidRate(f64),
+    #[error("Invalid location ({0}). Must be finite.")]
+    InvalidLocation(f64),
     #[error("Invalid df ({0}). Must be greater than 1.")]
     InvalidDegreesOfFreedom(f64),
     #[error("Invalid range. Upper and lower bounds must be different.")]
     InvalidRange,
     #[error("Invalid range bounds. Must be between 0 and 1")]
     InvalidRangeBounds,
-    #[error("Invalid shape parameter {0}. But be non-negative.")]
+    #[error("Invalid range bounds. Positive-scale priors require bounds at or above 0.")]
+    InvalidPositiveRangeBounds,
+    #[error("Invalid shape parameter {0}. Must be positive.")]
     InvalidShapeParameter(f64),
     #[error("Invalid value {0}. Must be between {1} and {2}.")]
     InvalidValue(f64, f64, f64),
@@ -140,6 +149,18 @@ impl PriorError {
             _ => Err(PriorError::MultipleErrors(errors)),
         }
     }
+}
+
+pub(crate) fn validate_positive_range(range: (Option<f64>, Option<f64>)) -> Result<(), PriorError> {
+    let lower = range.0.unwrap_or(0.0);
+    let upper = range.1.unwrap_or(f64::INFINITY);
+    if lower.is_nan() || upper.is_nan() || lower < 0.0 || upper < 0.0 {
+        return Err(PriorError::InvalidPositiveRangeBounds);
+    }
+    if lower >= upper {
+        return Err(PriorError::InvalidRange);
+    }
+    Ok(())
 }
 
 /// Enum representing the family (type) of a prior distribution.
@@ -172,6 +193,8 @@ pub enum PriorFamily {
     StudentT,
     /// Beta distribution prior.
     Beta,
+    /// Symmetric beta-prime distribution prior.
+    BetaPrime,
 }
 
 /// Trait for computing normalization constants of prior distributions.
@@ -260,6 +283,11 @@ impl PriorFn for BetaPrior {
     }
 }
 
+impl PriorFn for BetaPrimePrior {
+    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
+        Function::function(self, x)
+    }
+}
 impl PriorValidate for NormalPrior {
     fn prior_validate(&self) -> Result<(), PriorError> {
         Validate::validate(self)
@@ -296,6 +324,11 @@ impl PriorValidate for BetaPrior {
     }
 }
 
+impl PriorValidate for BetaPrimePrior {
+    fn prior_validate(&self) -> Result<(), PriorError> {
+        Validate::validate(self)
+    }
+}
 impl PriorRange for NormalPrior {
     fn prior_range(&self) -> (Option<f64>, Option<f64>) {
         Range::range(self)
@@ -350,6 +383,14 @@ impl PriorRange for BetaPrior {
     }
 }
 
+impl PriorRange for BetaPrimePrior {
+    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
+        Range::range(self)
+    }
+    fn prior_default_range(&self) -> (f64, f64) {
+        Range::default_range(self)
+    }
+}
 /// A prior distribution for Bayesian inference.
 ///
 /// This enum wraps all available prior types, allowing them to be used
@@ -427,6 +468,8 @@ pub enum Prior {
     StudentT(StudentTPrior),
     /// Beta prior distribution for probabilities.
     Beta(BetaPrior),
+    /// Symmetric beta-prime prior for positive ratios.
+    BetaPrime(BetaPrimePrior),
 }
 
 // Note: From implementations are generated automatically by enum_dispatch
@@ -501,6 +544,7 @@ impl TypeOf for Prior {
             Prior::Uniform(_) => PriorFamily::Uniform,
             Prior::StudentT(_) => PriorFamily::StudentT,
             Prior::Beta(_) => PriorFamily::Beta,
+            Prior::BetaPrime(_) => PriorFamily::BetaPrime,
         }
     }
 
@@ -561,5 +605,24 @@ impl Integrate<IntegralError, PriorError> for Prior {
 impl Family<PriorFamily> for Prior {
     fn family(&self) -> PriorFamily {
         self.type_of()
+    }
+}
+
+#[cfg(test)]
+mod positive_scale_prior_tests {
+    use approx::assert_relative_eq;
+
+    use super::*;
+
+    #[test]
+    fn full_and_truncated_positive_priors_integrate_to_one() {
+        let priors: [Prior; 8] = [
+            BetaPrimePrior::new(0.5, (None, None)).into(),
+            BetaPrimePrior::new(0.5, (Some(1.0), None)).into(),
+        ];
+
+        for prior in priors {
+            assert_relative_eq!(prior.integral().unwrap().value, 1.0, epsilon = 1e-6);
+        }
     }
 }
