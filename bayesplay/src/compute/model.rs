@@ -3,13 +3,13 @@
 //! This module provides types for combining priors and likelihoods into models,
 //! and computing posteriors, marginal likelihoods, and predictive distributions.
 
-use itertools::izip;
 use rmath::integrate;
 use rmath::pcauchy;
 use rmath::pexp;
 use rmath::pt;
 
 use std::ops::Mul;
+use std::{cell::RefCell, rc::Rc};
 use thiserror::Error;
 
 use serde::{Deserialize, Serialize};
@@ -113,7 +113,7 @@ pub enum IntegralError {
     /// A distribution function call failed (e.g. invalid parameters).
     #[error("Distribution error: {0}")]
     Distribution(String),
-    
+
     // The following errors are surfaced when attempting to approximate
     // the default t-tests.
     /// Large noncentral-t models must be expressed in terms of an effect size
@@ -126,7 +126,9 @@ pub enum IntegralError {
     #[error("estimate_marginal only supports Cauchy priors")]
     UnsupportedApproximationPrior,
     /// `estimate_marginal` requires a sample size, but the `ApproximateModel` has `n = None`.
-    #[error("ApproximateModel has no sample size (n); Respecify with a likelihood in terms of n or n1 and n2")]
+    #[error(
+        "ApproximateModel has no sample size (n); Respecify with a likelihood in terms of n or n1 and n2"
+    )]
     MissingN,
 }
 
@@ -299,8 +301,13 @@ impl Model {
     /// assert!((area - 1.0).abs() < 0.001);
     /// ```
     pub fn posterior(&self) -> Result<Posterior, IntegralError> {
-        let auc = self.integral()?;
-        let constant = auc.value;
+        // The heuristic marginal is not the integral of the posterior kernel.
+        let constant = self.integrate(None, None)?;
+        if !constant.is_finite() || constant <= 0.0 {
+            return Err(IntegralError::Distribution(
+                "Posterior requires a finite, positive exact normalizer".into(),
+            ));
+        }
 
         let model = *self;
 
@@ -426,7 +433,6 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
         let prior = self.prior;
         let likelihood = self.likelihood;
 
-        let (lower, upper) = self.range_or_default();
         prior.validate()?;
         likelihood.validate()?;
 
@@ -444,31 +450,76 @@ impl Integrate<IntegralError, anyhow::Error> for Model {
             ));
         }
 
-        match prior {
-            Prior::Point(point) => {
-                let value = likelihood.function(point.point)?;
-                let auc = Auc::new(value, likelihood, prior, None);
-                Ok(auc)
-            }
-            _ => {
-                let model = *self;
-                let f = move |x| model.function(x).unwrap();
-                let h = integrate!(f = f, lower = lower, upper = upper);
-
-                match h {
-                    Ok(v) => {
-                        let auc = Auc::new(v.value, likelihood, prior, None);
-                        Ok(auc)
-                    }
-                    Err(e) => Err(IntegralError::Integration(e)),
-                }
-            }
-        }
+        Ok(Auc::new(
+            self.integrate(None, None)?,
+            likelihood,
+            prior,
+            None,
+        ))
     }
+    /// Integrates the actual model kernel over the requested prior interval,
+    /// without the heuristic marginal correction used by `integral`.
     fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
-        let (_, _) = (lb, ub);
-        self.integral().map(|auc| auc.value)
+        self.prior.validate()?;
+        self.likelihood.validate()?;
+        let (lower, upper) = self.range_or_default();
+        if lb.is_some_and(f64::is_nan)
+            || ub.is_some_and(f64::is_nan)
+            || lb.unwrap_or(f64::NEG_INFINITY) > ub.unwrap_or(f64::INFINITY)
+        {
+            return Err(IntegralError::Distribution(
+                "Invalid integration bounds".into(),
+            ));
+        }
+        let lb = lb.unwrap_or(lower);
+        let ub = ub.unwrap_or(upper);
+        if let Prior::Point(point) = self.prior {
+            return if lb <= point.point && point.point <= ub {
+                Ok(self.likelihood.function(point.point)?)
+            } else {
+                Ok(0.0)
+            };
+        }
+        let (lb, ub) = (lb.max(lower), ub.min(upper));
+        if lb >= ub {
+            return Ok(0.0);
+        }
+        let model = *self;
+        let points = self
+            .get_observation()
+            .into_iter()
+            .filter(|x| x.is_finite() && *x > lb && *x < ub)
+            .collect();
+        integrate_density(move |x| model.function(x), lb, ub, points)
     }
+}
+
+// The quadrature API accepts only scalar values; retain evaluation errors rather
+// than panicking in its callback or turning a failed density into zero mass.
+fn integrate_density(
+    f: impl Fn(f64) -> Result<f64, anyhow::Error> + 'static,
+    lower: f64,
+    upper: f64,
+    points: Vec<f64>,
+) -> Result<f64, IntegralError> {
+    let error = Rc::new(RefCell::new(None));
+    let callback_error = Rc::clone(&error);
+    let result = integrate!(
+        f = move |x| match f(x) {
+            Ok(value) => value,
+            Err(e) => {
+                *callback_error.borrow_mut() = Some(e.to_string());
+                f64::NAN
+            }
+        },
+        lower = lower,
+        upper = upper,
+        points = points
+    );
+    if let Some(error) = error.borrow_mut().take() {
+        return Err(IntegralError::Distribution(error));
+    }
+    result.map(|v| v.value).map_err(IntegralError::Integration)
 }
 
 /// A posterior distribution computed from a Bayesian model.
@@ -565,54 +616,37 @@ pub struct Predictive(Model);
 
 impl Function<f64, f64, anyhow::Error> for Posterior {
     fn function(&self, x: f64) -> Result<f64, anyhow::Error> {
-        let prior = self.model.prior;
-        let likelihood = self.model.likelihood;
-        let k = self.constant;
-        let res = (likelihood.function(x)? * prior.function(x)?) / k;
-        Ok(res)
+        Ok(self.model.function(x)? / self.constant)
     }
 }
 
 impl Function<&[f64], Vec<Option<f64>>, anyhow::Error> for Posterior {
     fn function(&self, x: &[f64]) -> Result<Vec<Option<f64>>, anyhow::Error> {
-        let prior = self.model.prior;
-        let prior = prior.function(x).unwrap();
-        let likelihood = self.model.likelihood;
-        let likelihood = likelihood.function(x).unwrap();
-        let norm = (self.model.likelihood * self.model.prior).integral()?;
-        let res = izip!(prior, likelihood)
-            .map(|(p, l)| match (p, l, norm) {
-                (Some(p), Some(l), norm) => Some((p * l) / norm),
-                _ => None,
-            })
-            .collect();
-        Ok(res)
+        Ok(x.iter().map(|&x| self.function(x).ok()).collect())
     }
 }
 
 impl Function<f64, f64, anyhow::Error> for Predictive {
     fn function(&self, x: f64) -> Result<f64, anyhow::Error> {
+        self.0.prior.validate()?;
+        self.0.likelihood.validate()?;
         let mut likelihood = self.0.likelihood;
         likelihood.update_observation(x);
+        let jacobian = match likelihood {
+            Likelihood::NoncentralD(l) => l.into_t().1.unwrap().sqrt(),
+            Likelihood::NoncentralD2(l) => l.into_t().1.unwrap().sqrt(),
+            _ => 1.0,
+        };
         let model = self.0.prior * likelihood;
-        model
-            .integral()
-            .map(|auc| auc.value)
-            .map_err(|_| anyhow::Error::msg("Error with integration"))
+        // A predictive density must integrate the actual sampling kernel, not
+        // the legacy Cauchy interval heuristic used by marginal BF calculations.
+        Ok(model.integrate(None, None)? * jacobian)
     }
 }
 
 impl Function<&[f64], Vec<Option<f64>>, anyhow::Error> for Predictive {
     fn function(&self, x: &[f64]) -> Result<Vec<Option<f64>>, anyhow::Error> {
-        let mut likelihood = self.0.likelihood;
-        let res: Vec<Option<f64>> = x
-            .iter()
-            .map(|x| {
-                likelihood.update_observation(*x);
-                let model = self.0.prior * likelihood;
-                model.integral().ok().map(|auc| auc.value)
-            })
-            .collect();
+        let res: Vec<Option<f64>> = x.iter().map(|x| self.function(*x).ok()).collect();
         Ok(res)
     }
 }
@@ -676,31 +710,15 @@ impl Range for Posterior {
 
 impl Integrate<IntegralError, anyhow::Error> for Posterior {
     fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
-        let posterior = *self;
-        let lb = lb.unwrap_or(posterior.range_or_default().0);
-        let ub = ub.unwrap_or(posterior.range_or_default().1);
-
-        let f = move |x| posterior.function(x).unwrap();
-        let h = integrate!(f = f, lower = lb, upper = ub);
-        match h {
-            Ok(v) => Ok(v.value),
-            Err(e) => Err(IntegralError::Integration(e)),
-        }
+        Ok(self.model.integrate(lb, ub)? / self.constant)
     }
     fn integral(&self) -> Result<Auc, IntegralError> {
-        let posterior = *self;
-        let (lb, ub) = posterior.model.prior.range_or_default();
-        let f = move |x| posterior.function(x).unwrap();
-        let h = integrate!(f = f, lower = lb, upper = ub);
-        match h {
-            Ok(v) => Ok(Auc::new(
-                v.value,
-                self.model.likelihood,
-                self.model.prior,
-                None,
-            )),
-            Err(e) => Err(IntegralError::Integration(e)),
-        }
+        Ok(Auc::new(
+            self.integrate(None, None)?,
+            self.model.likelihood,
+            self.model.prior,
+            None,
+        ))
     }
 }
 
@@ -720,6 +738,11 @@ impl Integrate<IntegralError, anyhow::Error> for Posterior {
 ///    integration after scaling both Cauchy parameters by `√n`.
 ///
 /// The final BF combines both terms: `log_bf = log_bf_interval + log_bf_uncorrected`.
+///
+/// This is a legacy heuristic, not an exact posterior interval probability:
+/// its scaled-t surrogate ignores the Cauchy prior's influence on the posterior.
+/// It can be inaccurate for strongly concentrated or truncated priors. Predictive
+/// and posterior densities instead integrate the actual model kernel.
 ///
 /// # Arguments
 ///
@@ -756,17 +779,16 @@ pub fn estimate_marginal(
         _ => return Err(IntegralError::UnsupportedApproximationPrior),
     };
 
+    prior.validate()?;
     let n = approx.n.ok_or(IntegralError::MissingN)?;
     let t = approx.t;
     let df = approx.df;
-    // Missing bounds represent the full real line. In that case both posterior
-    // and prior interval masses are one, so the interval correction below is zero.
-    let (lower, upper) = match prior.range {
-        (Some(lo), Some(hi)) => (lo, hi),
-        (Some(lo), None) => (lo, f64::INFINITY),
-        (None, Some(hi)) => (f64::NEG_INFINITY, hi),
-        (None, None) => (f64::NEG_INFINITY, f64::INFINITY),
-    };
+    if !n.is_finite() || n <= 0.0 {
+        return Err(IntegralError::Distribution(
+            "Invalid approximation sample size".into(),
+        ));
+    }
+    let (lower, upper) = prior.range_or_default();
 
     // --- 1. Posterior interval (approximate posterior is a scaled t) ---
     // var_delta = 1/n,  mean_delta = t / sqrt(n)
@@ -869,10 +891,12 @@ pub fn estimate_marginal(
     let new_likelihood: Likelihood = NoncentralTLikelihood::new(t, df).into();
     let unbounded_model = new_likelihood * unbounded_prior;
 
-    let f = move |x| unbounded_model.function(x).unwrap();
-    let auc_h1 = integrate!(f = f, points = vec![t])
-        .map_err(IntegralError::Integration)?
-        .value;
+    let auc_h1 = integrate_density(
+        move |x| unbounded_model.function(x),
+        f64::NEG_INFINITY,
+        f64::INFINITY,
+        vec![t],
+    )?;
     let auc_h0 = new_likelihood
         .function(0.0)
         .map_err(|e| IntegralError::Distribution(e.to_string()))?;
@@ -882,9 +906,133 @@ pub fn estimate_marginal(
     // --- 5. Combine ---
     let log_bf = log_bf_interval + log_bf_uncorrected;
     let bf = log_bf.exp();
+    if !bf.is_finite() || !(bf * auc_h0).is_finite() {
+        return Err(IntegralError::Distribution(
+            "Non-finite marginal approximation".into(),
+        ));
+    }
 
     Ok(MarginalResult {
         marginal: bf * auc_h0,
         bf,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_relative_eq;
+
+    #[test]
+    fn predictive_effect_size_jacobians_preserve_kernels() {
+        let prior: Prior = PointPrior::new(0.0).into();
+        for (likelihood, jacobian) in [
+            (Likelihood::from(NoncentralDLikelihood::new(0.2, 25.0)), 5.0),
+            (
+                Likelihood::from(NoncentralD2Likelihood::new(0.2, 20.0, 30.0)),
+                12.0_f64.sqrt(),
+            ),
+        ] {
+            let model = likelihood * prior;
+            let kernel = likelihood.function(0.0).unwrap();
+            assert_relative_eq!(model.integral().unwrap().value, kernel);
+            assert_relative_eq!(model.predictive().function(0.2).unwrap(), kernel * jacobian);
+            assert_relative_eq!(
+                model.predictive().function(&[0.2][..]).unwrap()[0].unwrap(),
+                kernel * jacobian
+            );
+            let predictive = model.predictive();
+            let area =
+                integrate_density(move |x| predictive.function(x), -10.0, 10.0, vec![0.0]).unwrap();
+            assert_relative_eq!(area, 1.0, epsilon = 1e-7);
+        }
+    }
+
+    #[test]
+    fn approximation_selection_uses_original_observation() {
+        let prior: Prior = CauchyPrior::new(0.5, 0.7, (Some(0.0), Some(1.0))).into();
+        for likelihood in [
+            Likelihood::from(NoncentralDLikelihood::new(0.8, 100.0)),
+            Likelihood::from(NoncentralD2Likelihood::new(0.8, 200.0, 200.0)),
+        ] {
+            assert!(
+                !(likelihood * prior)
+                    .is_approximation()
+                    .needs_approximation()
+            );
+        }
+    }
+
+    #[test]
+    fn approximation_is_invariant_to_effect_size_coordinates() {
+        for bounds in [(None, None), (Some(-0.5), Some(1.0)), (Some(-0.5), None)] {
+            let original: Prior = CauchyPrior::new(0.3, 0.7, bounds).into();
+            let scaled: Prior = CauchyPrior::new(
+                0.6,
+                1.4,
+                (bounds.0.map(|x| 2.0 * x), bounds.1.map(|x| 2.0 * x)),
+            )
+            .into();
+            let a = ApproximateModel::builder().n(Some(4.0)).t(0.0).df(20.0);
+            let b = a.n(Some(1.0));
+            let first = estimate_marginal(&a, &original).unwrap();
+            let second = estimate_marginal(&b, &scaled).unwrap();
+            assert_relative_eq!(first.marginal, second.marginal, epsilon = 1e-10);
+            assert_relative_eq!(first.bf, second.bf, epsilon = 1e-10);
+        }
+    }
+
+    #[test]
+    fn approximation_errors_are_not_zero_marginals() {
+        let likelihood: Likelihood = NoncentralTLikelihood::new(20.0, 20.0).into();
+        let model = likelihood * Prior::from(CauchyPrior::new(0.0, 0.7, (None, None)));
+        assert!(matches!(
+            model.integral(),
+            Err(IntegralError::NoncentralTReparameterization)
+        ));
+        assert_relative_eq!(
+            model.predictive().function(20.0).unwrap(),
+            model.integrate(None, None).unwrap(),
+            epsilon = 1e-12
+        );
+        let error =
+            integrate_density(|_| anyhow::bail!("density failure"), 0.0, 1.0, vec![]).unwrap_err();
+        assert!(error.to_string().contains("density failure"));
+    }
+
+    #[test]
+    fn point_posterior_and_bounded_model_integrals() {
+        let likelihood: Likelihood = NormalLikelihood::new(0.0, 1.0).into();
+        let model = likelihood * Prior::from(PointPrior::new(0.5));
+        let posterior = model.posterior().unwrap();
+        assert_eq!(posterior.integral().unwrap().value, 1.0);
+        assert_eq!(posterior.integrate(Some(0.5), Some(0.5)).unwrap(), 1.0);
+        assert_eq!(posterior.integrate(Some(0.6), None).unwrap(), 0.0);
+        assert_eq!(model.integrate(Some(-1.0), Some(0.0)).unwrap(), 0.0);
+        let model = likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)));
+        assert_relative_eq!(
+            model.integrate(None, Some(0.0)).unwrap(),
+            model.integral().unwrap().value / 2.0,
+            epsilon = 1e-10
+        );
+        assert!(model.integrate(Some(1.0), Some(-1.0)).is_err());
+    }
+
+    #[test]
+    fn heuristic_posterior_uses_exact_normalizer_or_errors() {
+        let likelihood: Likelihood = NoncentralDLikelihood::new(-2.0, 25.0).into();
+        let model = likelihood * Prior::from(CauchyPrior::new(0.0, 0.7, (Some(0.0), Some(1.0))));
+        assert!(model.is_approximation().needs_approximation());
+        if let Ok(posterior) = model.posterior() {
+            let area = integrate_density(move |x| posterior.function(x), 0.0, 1.0, vec![]).unwrap();
+            assert_relative_eq!(area, 1.0, epsilon = 1e-7);
+            assert_relative_eq!(
+                posterior.function(&[0.2][..]).unwrap()[0].unwrap(),
+                posterior.function(0.2).unwrap()
+            );
+        }
+        let zero_model =
+            Likelihood::from(NormalLikelihood::new(1e100, 1.0)) * Prior::from(PointPrior::new(0.0));
+        assert!(zero_model.posterior().is_err());
+    }
 }

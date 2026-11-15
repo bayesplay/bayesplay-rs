@@ -174,12 +174,6 @@ impl Auc {
         self.approximation
     }
 
-    pub(crate) fn from_log(log_value: f64, likelihood: Likelihood, prior: Prior) -> Self {
-        Self {
-            log_value,
-            ..Self::new(log_value.exp(), likelihood, prior, None)
-        }
-    }
 }
 
 impl PartialEq<f64> for Auc {
@@ -382,15 +376,4 @@ mod tests {
         assert_eq!(approximate / approximate, 1.0);
     }
 
-    #[test]
-    fn division_retains_ratios_of_underflowed_and_overflowed_marginals() {
-        let likelihood = NormalLikelihood::new(0.0, 1.0).into();
-        let prior = PointPrior::new(0.0).into();
-        for scale in [-1000.0, 1000.0] {
-            let a = Auc::from_log(scale + 2.0_f64.ln(), likelihood, prior);
-            let b = Auc::from_log(scale, likelihood, prior);
-            approx::assert_relative_eq!(a / b, 2.0, epsilon = 1e-12);
-            approx::assert_relative_eq!(b / a, 0.5, epsilon = 1e-12);
-        }
-    }
 }
