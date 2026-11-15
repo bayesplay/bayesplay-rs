@@ -39,6 +39,7 @@ dependencies = [
  "itertools",
  "rmath",
  "serde",
+ "statrs",
  "thiserror 1.0.69",
 ]
 

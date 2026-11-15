@@ -616,7 +616,7 @@ mod positive_scale_prior_tests {
 
     #[test]
     fn full_and_truncated_positive_priors_integrate_to_one() {
-        let priors: [Prior; 8] = [
+        let priors: [Prior; 2] = [
             BetaPrimePrior::new(0.5, (None, None)).into(),
             BetaPrimePrior::new(0.5, (Some(1.0), None)).into(),
         ];
