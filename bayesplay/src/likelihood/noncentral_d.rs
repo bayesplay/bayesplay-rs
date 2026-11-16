@@ -41,12 +41,10 @@ pub struct NoncentralDLikelihood {
     pub n: f64,
 }
 
+use super::NoncentralTLikelihood;
 use super::{LikelihoodError, Observation};
 use crate::common::Function;
 use crate::common::Validate;
-use crate::prelude::NoncentralTLikelihood;
-
-// use super::NoncentralTLikelihood;
 
 impl NoncentralDLikelihood {
     /// Creates a new `NoncentralDLikelihood` instance.
@@ -70,27 +68,18 @@ impl NoncentralDLikelihood {
         NoncentralDLikelihood { d, n }
     }
 
-    pub fn get_tvalue(&self) -> (f64, f64, f64) {
-        let n = self.n;
-        let d = self.d;
-
-        let t = d * n.sqrt();
-        let df = n - 1.0;
-
-        (t, df, n)
+    /// The effective sample size relating d to t (`t = d * sqrt(n)`); for a
+    /// one-sample design this is just `n`.
+    pub fn effective_n(&self) -> f64 {
+        self.n
     }
 
-    pub fn into_t(&self) -> (NoncentralTLikelihood, Option<f64>) {
-        let (t, df, n) = self.get_tvalue();
-        (NoncentralTLikelihood::new(t, df), Some(n))
+    /// The equivalent noncentral t likelihood (t = d√n, df = n − 1), whose
+    /// parameter is the noncentrality δ√n rather than δ.
+    pub fn to_noncentral_t(&self) -> NoncentralTLikelihood {
+        NoncentralTLikelihood::new(self.d * self.n.sqrt(), self.n - 1.0)
     }
 }
-//
-// pub fn new_checked(d: f64, n: f64) -> Result<Likelihood, LikelihoodError> {
-//     let likelihood = NoncentralDLikelihood { d, n };
-//     likelihood.validate()?;
-//     Ok(Likelihood::NoncentralD(likelihood))
-// }
 
 impl Function<f64, f64, LikelihoodError> for NoncentralDLikelihood {
     /// Evaluates the noncentral D likelihood function.

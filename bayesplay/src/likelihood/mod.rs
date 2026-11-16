@@ -342,6 +342,26 @@ impl Function<&[f64], Vec<Option<f64>>, LikelihoodError> for Likelihood {
     }
 }
 
+impl Likelihood {
+    /// Where the likelihood (as a function of the parameter) peaks, and the
+    /// width of that peak, as `(centre, width)`. Used to place integration
+    /// windows so a narrow peak cannot be missed.
+    pub(crate) fn peak_hint(&self) -> (f64, f64) {
+        match self {
+            Likelihood::Normal(l) => (l.mean, l.se),
+            Likelihood::StudentT(l) => (l.mean, l.sd),
+            Likelihood::NoncentralT(l) => (l.t, 1.0),
+            Likelihood::NoncentralD(l) => (l.d, l.effective_n().recip().sqrt()),
+            Likelihood::NoncentralD2(l) => (l.d, l.effective_n().recip().sqrt()),
+            Likelihood::Binomial(l) => {
+                let p = l.successes / l.trials;
+                (p, ((p * (1.0 - p)).max(l.trials.recip()) / l.trials).sqrt())
+            }
+            Likelihood::VarianceRatio(l) => (l.u, l.u * (2.0 / l.df).sqrt()),
+        }
+    }
+}
+
 // Implement the generic Validate trait for Likelihood using enum_dispatch
 impl Validate<LikelihoodError> for Likelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {

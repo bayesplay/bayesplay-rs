@@ -147,11 +147,9 @@ pub mod prelude {
     pub use crate::prior::UniformPrior;
 
     // For computing Bayes factors
-    pub use crate::compute::model::Model;
-
-    pub use crate::compute::model::ApproximateModel;
+    pub use crate::common::Auc;
     pub use crate::compute::model::IntegralError;
-    pub use crate::compute::model::MarginalResult;
+    pub use crate::compute::model::Model;
     pub use crate::compute::model::Posterior;
-    pub use crate::compute::model::estimate_marginal;
+    pub use crate::compute::model::Predictive;
 }

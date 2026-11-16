@@ -74,22 +74,19 @@ impl NoncentralD2Likelihood {
         NoncentralD2Likelihood { d, n1, n2 }
     }
 
-    pub fn get_tvalue(&self) -> (f64, f64, f64) {
-        let n1 = self.n1;
-        let n2 = self.n2;
-        let d = self.d;
-
-        let n = (n1 * n2) / (n1 + n2);
-        let t = d * n.sqrt();
-        let df = n1 + n2 - 2.0;
-        (t, df, n)
+    /// The effective sample size `n1 * n2 / (n1 + n2)` relating d to t
+    /// (`t = d * sqrt(effective_n)`).
+    pub fn effective_n(&self) -> f64 {
+        self.n1 * self.n2 / (self.n1 + self.n2)
     }
 
-    pub fn into_t(&self) -> (NoncentralTLikelihood, Option<f64>) {
-        let (t, df, n) = self.get_tvalue();
-        (NoncentralTLikelihood::new(t, df), Some(n))
+    /// The equivalent noncentral t likelihood (t = d√n_eff, df = n1 + n2 − 2),
+    /// whose parameter is the noncentrality δ√n_eff rather than δ.
+    pub fn to_noncentral_t(&self) -> NoncentralTLikelihood {
+        NoncentralTLikelihood::new(self.d * self.effective_n().sqrt(), self.n1 + self.n2 - 2.0)
     }
 }
+
 impl Function<f64, f64, LikelihoodError> for NoncentralD2Likelihood {
     /// Computes the likelihood function for the given input `x`.
     ///
