@@ -285,12 +285,14 @@ mod tests {
     #[test]
     fn test_normal_prior_validation() {
         // Test valid prior
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (None, None)).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (None, None));
             assert!(prior.validate().is_ok());
         }
 
         // Test invalid standard deviation
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, -1.0, (None, None)).into() {
+        {
+            let prior = NormalPrior::new(0.0, -1.0, (None, None));
             let result = prior.validate();
             assert!(result.is_err());
             match result {
@@ -300,7 +302,8 @@ mod tests {
         }
 
         // Test invalid range
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(2.0), Some(2.0))).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (Some(2.0), Some(2.0)));
             let result = prior.validate();
             assert!(result.is_err());
             match result {
@@ -310,7 +313,8 @@ mod tests {
         }
 
         // Test multiple validation errors
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, -1.0, (Some(2.0), Some(2.0))).into() {
+        {
+            let prior = NormalPrior::new(0.0, -1.0, (Some(2.0), Some(2.0)));
             let result = prior.validate();
             assert!(result.is_err());
             match result {
@@ -330,26 +334,30 @@ mod tests {
     #[test]
     fn test_normalization() {
         // Test unbounded normal distribution
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (None, None)).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (None, None));
             assert_eq!(prior.normalize().unwrap(), 1.0);
         }
 
         // Test lower bounded normal distribution
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(-1.0), None)).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (Some(-1.0), None));
             let norm = prior.normalize().unwrap();
             let expected = pnorm!(q = -1.0, mean = 0.0, sd = 1.0, lower_tail = false).unwrap();
             assert_relative_eq!(norm, expected, epsilon = 1e-10);
         }
 
         // Test upper bounded normal distribution
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (None, Some(1.0))).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (None, Some(1.0)));
             let norm = prior.normalize().unwrap();
             let expected = pnorm!(q = 1.0, mean = 0.0, sd = 1.0, lower_tail = true).unwrap();
             assert_relative_eq!(norm, expected, epsilon = 1e-10);
         }
 
         // Test bounded normal distribution
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0))).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
             let norm = prior.normalize().unwrap();
             // Expected: approximately 0.6827
             let expected = 0.6827;
@@ -357,8 +365,8 @@ mod tests {
         }
 
         // Test normalization error case (impossible range)
-        if let Prior::Normal(mut prior) = NormalPrior::new(0.0, 1.0, (Some(5.0), Some(1.0))).into()
         {
+            let mut prior = NormalPrior::new(0.0, 1.0, (Some(5.0), Some(1.0)));
             // Set the range to 0 so that normalization fails
             prior.range = (Some(5.0), Some(5.0));
             assert!(prior.normalize().is_err());
@@ -368,7 +376,8 @@ mod tests {
     #[test]
     fn test_pdf_calculation() {
         // Test standard normal PDF at various points
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (None, None)).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (None, None));
             let expected_at_mean = 1.0 / (2.0 * PI).sqrt();
             assert_relative_eq!(
                 prior.function(0.0).unwrap(),
@@ -393,7 +402,8 @@ mod tests {
         }
 
         // Test custom normal distribution
-        if let Prior::Normal(prior) = NormalPrior::new(2.0, 0.5, (None, None)).into() {
+        {
+            let prior = NormalPrior::new(2.0, 0.5, (None, None));
             let expected_at_mean = 1.0 / (2.0 * PI * 0.5 * 0.5).sqrt();
             assert_relative_eq!(
                 prior.function(2.0).unwrap(),
@@ -403,13 +413,15 @@ mod tests {
         }
 
         // Test truncated normal distribution - value outside bounds
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0))).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
             assert_eq!(prior.function(2.0).unwrap(), 0.0);
             assert_eq!(prior.function(-2.0).unwrap(), 0.0);
         }
 
         // Test truncated normal distribution - value inside bounds
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0))).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
             let unnormalized = 1.0 / (2.0 * PI).sqrt();
             let normalization = prior.normalize().unwrap();
             assert_relative_eq!(
@@ -420,20 +432,23 @@ mod tests {
         }
 
         // Test with invalid parameters
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, -1.0, (None, None)).into() {
+        {
+            let prior = NormalPrior::new(0.0, -1.0, (None, None));
             assert!(prior.function(0.0).is_err());
         }
     }
 
     #[test]
     fn test_range_behavior() {
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (None, None)).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (None, None));
             assert_eq!(prior.range(), (None, None));
             assert_eq!(prior.default_range(), (-f64::INFINITY, f64::INFINITY));
             assert!(prior.has_default_range());
         }
 
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0))).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
             assert_eq!(prior.range(), (Some(-1.0), Some(1.0)));
             assert!(!prior.has_default_range());
         }
@@ -442,13 +457,15 @@ mod tests {
     #[test]
     fn test_edge_cases() {
         // Test with extremely large values
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (None, Some(1e10))).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1.0, (None, Some(1e10)));
             // Should be close to zero because the area under the curve beyond 10^10 is negligible
             assert_relative_eq!(prior.normalize().unwrap(), 1.0, epsilon = 1e-5);
         }
 
         // Test with extremely small standard deviation
-        if let Prior::Normal(prior) = NormalPrior::new(0.0, 1e-10, (None, None)).into() {
+        {
+            let prior = NormalPrior::new(0.0, 1e-10, (None, None));
             // The PDF at the mean should be very large
             let value = prior.function(0.0).unwrap();
             assert!(value > 1e9);

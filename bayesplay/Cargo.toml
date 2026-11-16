@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-itertools = "^0.12.1"
-rmath = {version = "0.1.0", path = "../rmath"}
-serde = {version = "1.0.197", features = ["derive"]}
-thiserror = "1.0.58"
+rmath = { version = "0.1.0", path = "../rmath" }
+serde = { version = "1.0.197", features = ["derive"] }
+thiserror = "2.0.12"
+# The approx traits are implemented for `Auc`, so this is part of the public API.
 approx = "0.5.1"
 enum_dispatch = "0.3"
 statrs = "0.16.0"

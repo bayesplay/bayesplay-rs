@@ -45,8 +45,7 @@ pub fn dexp(x: f64, rate: f64, log: bool) -> Result<f64, &'static str> {
 }
 
 pub fn pexp(q: f64, rate: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
-    statrs::distribution::Exp::new(rate)
-        .map_err(|_| "Error creating Exponential distribution")?;
+    statrs::distribution::Exp::new(rate).map_err(|_| "Error creating Exponential distribution")?;
 
     if q < 0.0 {
         return match (lower_tail, log_p) {
