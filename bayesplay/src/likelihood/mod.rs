@@ -43,6 +43,7 @@ pub(crate) mod variance_ratio;
 
 use crate::common::Family;
 use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Validate;
 
 pub use binomial::BinomialLikelihood;
@@ -170,7 +171,7 @@ pub trait Observation {
 /// Concrete trait for likelihood function evaluation (used by enum_dispatch)
 #[enum_dispatch]
 pub trait LikelihoodFn {
-    fn likelihood_function(&self, x: f64) -> Result<f64, LikelihoodError>;
+    fn likelihood_ln_function(&self, x: f64) -> Result<f64, LikelihoodError>;
 }
 
 /// Concrete trait for likelihood validation (used by enum_dispatch)
@@ -181,44 +182,44 @@ pub trait LikelihoodValidate {
 
 // Implement the concrete traits for each likelihood type by delegating to the generic traits
 impl LikelihoodFn for NormalLikelihood {
-    fn likelihood_function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        Function::function(self, x)
+    fn likelihood_ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl LikelihoodFn for BinomialLikelihood {
-    fn likelihood_function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        Function::function(self, x)
+    fn likelihood_ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl LikelihoodFn for StudentTLikelihood {
-    fn likelihood_function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        Function::function(self, x)
+    fn likelihood_ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl LikelihoodFn for NoncentralDLikelihood {
-    fn likelihood_function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        Function::function(self, x)
+    fn likelihood_ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl LikelihoodFn for NoncentralD2Likelihood {
-    fn likelihood_function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        Function::function(self, x)
+    fn likelihood_ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl LikelihoodFn for NoncentralTLikelihood {
-    fn likelihood_function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        Function::function(self, x)
+    fn likelihood_ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl LikelihoodFn for VarianceRatioLikelihood {
-    fn likelihood_function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        Function::function(self, x)
+    fn likelihood_ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        LogFunction::ln_function(self, x)
     }
 }
 impl LikelihoodValidate for NormalLikelihood {
@@ -332,16 +333,16 @@ pub enum Likelihood {
 // Note: From implementations are generated automatically by enum_dispatch
 
 // Implement the generic Function trait for Likelihood using enum_dispatch
-impl Function<f64, f64, LikelihoodError> for Likelihood {
-    fn function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        self.likelihood_function(x)
+impl LogFunction<LikelihoodError> for Likelihood {
+    fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        self.likelihood_ln_function(x)
     }
 }
 
 impl Function<&[f64], Vec<Option<f64>>, LikelihoodError> for Likelihood {
     fn function(&self, x: &[f64]) -> Result<Vec<Option<f64>>, LikelihoodError> {
         Ok(x.iter()
-            .map(|x| self.likelihood_function(*x).ok())
+            .map(|x| self.function(*x).ok())
             .collect::<Vec<Option<_>>>())
     }
 }

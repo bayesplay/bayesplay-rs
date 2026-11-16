@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use statrs::function::gamma::ln_gamma;
 
 use super::{LikelihoodError, Observation};
-use crate::common::{Function, Validate};
+use crate::common::{LogFunction, Validate};
 
 /// Likelihood for a population variance ratio.
 ///
@@ -21,12 +21,12 @@ impl VarianceRatioLikelihood {
     }
 }
 
-impl Function<f64, f64, LikelihoodError> for VarianceRatioLikelihood {
-    fn function(&self, r: f64) -> Result<f64, LikelihoodError> {
+impl LogFunction<LikelihoodError> for VarianceRatioLikelihood {
+    fn ln_function(&self, r: f64) -> Result<f64, LikelihoodError> {
         self.validate()?;
 
         if !r.is_finite() || r <= 0.0 {
-            return Ok(0.0);
+            return Ok(f64::NEG_INFINITY);
         }
 
         let log_r = r.ln();
@@ -37,11 +37,12 @@ impl Function<f64, f64, LikelihoodError> for VarianceRatioLikelihood {
         } else {
             log_scaled_observation.exp() / 2.0
         };
-        let log_density = self.df.ln() - log_r + (half_df - 1.0) * log_scaled_observation
-            - exponential_term
-            - half_df * std::f64::consts::LN_2
-            - ln_gamma(half_df);
-        Ok(log_density.exp())
+        Ok(
+            self.df.ln() - log_r + (half_df - 1.0) * log_scaled_observation
+                - exponential_term
+                - half_df * std::f64::consts::LN_2
+                - ln_gamma(half_df),
+        )
     }
 }
 
@@ -75,6 +76,7 @@ mod tests {
     use approx::assert_relative_eq;
 
     use super::*;
+    use crate::common::Function;
     use crate::likelihood::Likelihood;
 
     #[test]

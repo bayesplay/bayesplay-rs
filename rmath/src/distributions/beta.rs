@@ -22,7 +22,7 @@ pub fn dbeta(x: f64, shape1: f64, shape2: f64, log: bool) -> Result<f64, &'stati
     let dist = statrs::distribution::Beta::new(shape1, shape2)
         .map_err(|_| "Error creating Beta distribution")?;
     match log {
-        true => Ok(dist.pdf(x).ln()),
+        true => Ok(dist.ln_pdf(x)),
         false => Ok(dist.pdf(x)),
     }
 }

@@ -67,9 +67,10 @@ use crate::common::Auc;
 use crate::common::Family;
 use crate::common::Function;
 use crate::common::Integrate;
+use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
-use crate::compute::model::{IntegralError, integrate_kernel, requested_bounds};
+use crate::compute::model::{IntegralError, ln_integrate_kernel, requested_bounds};
 
 pub use beta::BetaPrior;
 pub use beta_prime::BetaPrimePrior;
@@ -237,12 +238,18 @@ pub trait Normalize {
     /// Returns 1.0 for untruncated distributions. For truncated distributions,
     /// returns the probability mass within the truncation bounds.
     fn normalize(&self) -> Result<f64, PriorError>;
+
+    /// The natural logarithm of [`Normalize::normalize`]. Priors that can be
+    /// truncated far into a tail override this to avoid underflow.
+    fn ln_normalize(&self) -> Result<f64, PriorError> {
+        Ok(self.normalize()?.ln())
+    }
 }
 
 /// Concrete trait for prior function evaluation (used by enum_dispatch)
 #[enum_dispatch]
 pub trait PriorFn {
-    fn prior_function(&self, x: f64) -> Result<f64, PriorError>;
+    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError>;
 }
 
 /// Concrete trait for prior validation (used by enum_dispatch)
@@ -261,44 +268,44 @@ pub trait PriorRange {
 // Implement the concrete traits for each prior type by delegating to the generic traits
 
 impl PriorFn for NormalPrior {
-    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
-        Function::function(self, x)
+    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl PriorFn for PointPrior {
-    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
-        Function::function(self, x)
+    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl PriorFn for CauchyPrior {
-    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
-        Function::function(self, x)
+    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl PriorFn for UniformPrior {
-    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
-        Function::function(self, x)
+    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl PriorFn for StudentTPrior {
-    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
-        Function::function(self, x)
+    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl PriorFn for BetaPrior {
-    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
-        Function::function(self, x)
+    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
+        LogFunction::ln_function(self, x)
     }
 }
 
 impl PriorFn for BetaPrimePrior {
-    fn prior_function(&self, x: f64) -> Result<f64, PriorError> {
-        Function::function(self, x)
+    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
+        LogFunction::ln_function(self, x)
     }
 }
 impl PriorValidate for NormalPrior {
@@ -488,16 +495,16 @@ pub enum Prior {
 // Note: From implementations are generated automatically by enum_dispatch
 
 // Implement the generic Function trait for Prior using enum_dispatch
-impl Function<f64, f64, PriorError> for Prior {
-    fn function(&self, x: f64) -> Result<f64, PriorError> {
-        self.prior_function(x)
+impl LogFunction<PriorError> for Prior {
+    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
+        self.prior_ln_function(x)
     }
 }
 
 impl Function<&[f64], Vec<Option<f64>>, PriorError> for Prior {
     fn function(&self, x: &[f64]) -> Result<Vec<Option<f64>>, PriorError> {
         Ok(x.iter()
-            .map(|x| self.prior_function(*x).ok())
+            .map(|x| self.function(*x).ok())
             .collect::<Vec<Option<_>>>())
     }
 }
@@ -580,22 +587,30 @@ impl Prior {
     }
 }
 
-impl Integrate<IntegralError, PriorError> for Prior {
-    fn integral(&self) -> Result<Auc, IntegralError> {
-        Ok(Auc::new(self.integrate(None, None)?))
-    }
-
-    fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
+impl Prior {
+    /// The natural logarithm of [`Integrate::integrate`] (the prior mass in
+    /// `[lb, ub]`).
+    pub fn ln_integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
         self.validate()?;
         let (lb, ub) = requested_bounds(lb, ub, self.range_or_default())?;
         if let Prior::Point(point) = self {
             return Ok(if (lb..=ub).contains(&point.point) {
-                1.0
-            } else {
                 0.0
+            } else {
+                f64::NEG_INFINITY
             });
         }
-        integrate_kernel(|x| self.function(x), lb, ub, self.peak_hint())
+        ln_integrate_kernel(|x| self.ln_function(x), lb, ub, self.peak_hint(), None)
+    }
+}
+
+impl Integrate<IntegralError, PriorError> for Prior {
+    fn integral(&self) -> Result<Auc, IntegralError> {
+        Ok(Auc::from_ln(self.ln_integrate(None, None)?))
+    }
+
+    fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
+        Ok(self.ln_integrate(lb, ub)?.exp())
     }
 }
 

@@ -3,7 +3,7 @@ use rmath::dt;
 use serde::{Deserialize, Serialize};
 
 use super::{LikelihoodError, Observation};
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Validate;
 
 /// A Student's t likelihood function for t-distributed data.
@@ -135,27 +135,27 @@ impl Observation for StudentTLikelihood {
     }
 }
 
-impl Function<f64, f64, LikelihoodError> for StudentTLikelihood {
-    /// Evaluates the StudentT likelihood function for a given value `x`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bayesplay::prelude::*;
-    ///
-    /// let likelihood = StudentTLikelihood { mean: 0.0, sd: 1.0, df: 10.0 };
-    ///
-    /// // Valid input
-    /// let result = likelihood.function(0.5);
-    /// assert!(result.is_ok());
-    /// assert!((result.unwrap() - 0.33969513635207776447).abs() < 1e-10);
-    /// ```
-    fn function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        let mean = self.mean;
-        let df = self.df;
-        let sd = self.sd;
-
+/// Evaluates the StudentT likelihood function for a given value `x`.
+///
+/// # Examples
+///
+/// ```
+/// use bayesplay::prelude::*;
+///
+/// let likelihood = StudentTLikelihood { mean: 0.0, sd: 1.0, df: 10.0 };
+///
+/// // Valid input
+/// let result = likelihood.function(0.5);
+/// assert!(result.is_ok());
+/// assert!((result.unwrap() - 0.33969513635207776447).abs() < 1e-10);
+/// ```
+impl LogFunction<LikelihoodError> for StudentTLikelihood {
+    fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
         // The density is symmetric in (observation, parameter).
-        Ok(dt!(x = (mean - x) / sd, df = df).map_err(LikelihoodError::DistributionError)? / sd)
+        let z = (self.mean - x) / self.sd;
+        Ok(
+            dt!(x = z, df = self.df, log = true).map_err(LikelihoodError::DistributionError)?
+                - self.sd.ln(),
+        )
     }
 }

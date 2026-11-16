@@ -43,7 +43,7 @@ pub struct NoncentralDLikelihood {
 
 use super::NoncentralTLikelihood;
 use super::{LikelihoodError, Observation};
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Validate;
 
 impl NoncentralDLikelihood {
@@ -81,26 +81,29 @@ impl NoncentralDLikelihood {
     }
 }
 
-impl Function<f64, f64, LikelihoodError> for NoncentralDLikelihood {
-    /// Evaluates the noncentral D likelihood function.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bayesplay::prelude::*;
-    ///
-    /// let likelihood = NoncentralDLikelihood { d: 2.5, n: 10.0 };
-    /// let result = likelihood.function(1.2);
-    /// assert!(result.is_ok());
-    /// assert!((result.unwrap() - 0.01991719281946398995).abs() < 1e-10);
-    ///
-    /// ```
-    fn function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        let d = self.d;
-        let n = self.n;
-        let df = n - 1.0;
-        let ncp = x * n.sqrt();
-        dt!(x = d * n.sqrt(), df = df, ncp = ncp).map_err(LikelihoodError::DistributionError)
+/// Evaluates the noncentral D likelihood function.
+///
+/// # Examples
+///
+/// ```
+/// use bayesplay::prelude::*;
+///
+/// let likelihood = NoncentralDLikelihood { d: 2.5, n: 10.0 };
+/// let result = likelihood.function(1.2);
+/// assert!(result.is_ok());
+/// assert!((result.unwrap() - 0.01991719281946398995).abs() < 1e-10);
+///
+/// ```
+impl LogFunction<LikelihoodError> for NoncentralDLikelihood {
+    fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        let sqrt_n = self.n.sqrt();
+        dt!(
+            x = self.d * sqrt_n,
+            df = self.n - 1.0,
+            ncp = x * sqrt_n,
+            log = true
+        )
+        .map_err(LikelihoodError::DistributionError)
     }
 }
 
@@ -155,6 +158,7 @@ impl Validate<LikelihoodError> for NoncentralDLikelihood {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Function;
     macro_rules! approx_eq {
         ($a:expr, $b:expr) => {
             assert_eq!($a as f32, $b as f32)

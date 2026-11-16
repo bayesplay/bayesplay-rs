@@ -8,15 +8,21 @@
 # * `bayesfactor_logbf`: log BF10 from BayesFactor::ttest.tstat().
 # * `reference_logbf`: an independent high-precision log BF10.
 #
-# BayesFactor is the standard for these tests, but its interval Bayes factors 
-# are unreliable when the observed effect lies far outside the prior interval 
-# and for very large t (it reports "t approximation invoked"). 
-# `reference_logbf` is computed directly from the model definition, using only 
-# positive integrands so there is no cancellation:
+# BayesFactor is the de-facto standard for these tests, but its interval
+# Bayes factors are unreliable when the observed effect lies far outside the
+# prior interval (e.g. t = 20, n = 100, delta < 0 gives log BF = +49.6) and for
+# very large t (it reports "t approximation invoked"). `reference_logbf` is
+# therefore computed directly from the model definition, using only positive
+# integrands so there is no cancellation:
 #
 #   T = Z' / S,  Z' ~ N(delta * sqrt(n), 1),  S = sqrt(V / df),  V ~ chi^2_df
 #   m1 = (1 / P(I)) int_I int_0^inf s phi(t s - delta sqrt(n)) h(s) cauchy(delta) ds ddelta
 #   m0 = dt(t, df)
+#
+# and for unbounded priors it is cross-checked against the closed-form JZS
+# g-integral (Rouder et al., 2009). The script stops if the two disagree.
+#
+# Requires: BayesFactor (tested with 0.9.12-4.8).
 
 suppressMessages(library(BayesFactor))
 

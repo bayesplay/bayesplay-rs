@@ -1,6 +1,6 @@
 use super::Normalize;
 use super::PriorError;
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
 use serde::{Deserialize, Serialize};
@@ -132,10 +132,15 @@ impl Validate<PriorError> for PointPrior {
 /// assert_eq!(prior.function(0.5).unwrap(), 0.0);
 /// assert_eq!(prior.function(-1.0).unwrap(), 0.0);
 /// ```
-impl Function<f64, f64, PriorError> for PointPrior {
-    fn function(&self, x: f64) -> Result<f64, PriorError> {
+impl LogFunction<PriorError> for PointPrior {
+    /// A point mass "density": 0 (i.e. ln 1) at the point, -inf elsewhere.
+    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
         self.validate()?;
-        if x == self.point { Ok(1.0) } else { Ok(0.0) }
+        Ok(if x == self.point {
+            0.0
+        } else {
+            f64::NEG_INFINITY
+        })
     }
 }
 
@@ -159,6 +164,7 @@ impl Range for PointPrior {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Function;
     use crate::prior::Prior;
 
     #[test]

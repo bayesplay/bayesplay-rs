@@ -2,7 +2,7 @@ use rmath::{lbeta, pbeta};
 use serde::{Deserialize, Serialize};
 
 use super::{Normalize, PriorError, validate_positive_range};
-use crate::common::{Function, Range, Validate, truncated_normalization};
+use crate::common::{LogFunction, Range, Validate, truncated_normalization};
 
 /// A symmetric beta-prime prior for a positive ratio.
 ///
@@ -113,12 +113,12 @@ impl Normalize for BetaPrimePrior {
     }
 }
 
-impl Function<f64, f64, PriorError> for BetaPrimePrior {
-    fn function(&self, x: f64) -> Result<f64, PriorError> {
+impl LogFunction<PriorError> for BetaPrimePrior {
+    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
         self.validate()?;
         let (lower, upper) = self.range_or_default();
         if !x.is_finite() || x <= 0.0 || !(lower..=upper).contains(&x) {
-            return Ok(0.0);
+            return Ok(f64::NEG_INFINITY);
         }
 
         let log_x = x.ln();
@@ -130,7 +130,7 @@ impl Function<f64, f64, PriorError> for BetaPrimePrior {
         let log_density = -lbeta(self.alpha, self.alpha).map_err(PriorError::DistributionError)?
             + (self.alpha - 1.0) * log_x
             - 2.0 * self.alpha * log_one_plus_x;
-        Ok(log_density.exp() / self.normalize()?)
+        Ok(log_density - self.normalize()?.ln())
     }
 }
 
@@ -139,6 +139,7 @@ mod tests {
     use approx::assert_relative_eq;
 
     use super::*;
+    use crate::common::Function;
     use crate::prior::{Prior, PriorFamily, TypeOf};
 
     #[test]

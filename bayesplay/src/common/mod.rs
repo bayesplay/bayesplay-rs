@@ -69,6 +69,34 @@ pub trait Function<T, S, E> {
     fn function(&self, x: T) -> Result<S, E>;
 }
 
+/// Trait for evaluating the natural logarithm of a density or likelihood.
+///
+/// This is the primary way densities are implemented: working on the log scale
+/// keeps values that would underflow an `f64` (e.g. a likelihood 40 standard
+/// errors from its peak) usable. Every implementor gets [`Function`] for free,
+/// as `exp(ln_function(x))`.
+///
+/// # Examples
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let likelihood = NormalLikelihood::new(40.0, 1.0);
+/// assert_eq!(likelihood.function(0.0).unwrap(), 0.0); // underflows
+/// let log_density = likelihood.ln_function(0.0).unwrap();
+/// assert!((log_density - (-800.0 - 0.5 * (2.0 * std::f64::consts::PI).ln())).abs() < 1e-9);
+/// ```
+pub trait LogFunction<E> {
+    /// Evaluates the log density at `x`; `-inf` where the density is zero.
+    fn ln_function(&self, x: f64) -> Result<f64, E>;
+}
+
+impl<T: LogFunction<E>, E> Function<f64, f64, E> for T {
+    fn function(&self, x: f64) -> Result<f64, E> {
+        Ok(self.ln_function(x)?.exp())
+    }
+}
+
 /// Trait for managing the range (support) of a distribution.
 ///
 /// Distributions can have bounded or unbounded support. This trait provides
@@ -142,17 +170,18 @@ pub trait Range {
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Auc {
-    /// The value of the integral.
+    /// The value of the integral. This can underflow to 0 for extreme models;
+    /// `log_value` is computed directly and remains accurate.
     pub value: f64,
-    /// The natural logarithm of `value`.
+    /// The natural logarithm of the integral.
     pub log_value: f64,
 }
 
 impl Auc {
-    pub(crate) fn new(value: f64) -> Self {
+    pub(crate) fn from_ln(log_value: f64) -> Self {
         Self {
-            value,
-            log_value: value.ln(),
+            value: log_value.exp(),
+            log_value,
         }
     }
 }
@@ -166,8 +195,14 @@ impl PartialEq<f64> for Auc {
 impl Div for Auc {
     type Output = f64;
 
+    /// The ratio of two areas (e.g. a Bayes factor), computed from the log
+    /// values so it stays accurate when either area underflows.
     fn div(self, rhs: Self) -> Self::Output {
-        self.value / rhs.value
+        if self.log_value.is_finite() && rhs.log_value.is_finite() {
+            (self.log_value - rhs.log_value).exp()
+        } else {
+            self.value / rhs.value
+        }
     }
 }
 
@@ -315,6 +350,45 @@ pub fn truncated_normalization<E>(
                 Ok(cdf(lower, false)? - cdf(upper, false)?)
             }
         }
+    }
+}
+
+/// The log of [`truncated_normalization`], computed from log CDF values so
+/// that a truncation interval far in a tail (e.g. a normal truncated to
+/// `[40, inf)`, mass ~1e-350) does not underflow.
+///
+/// `ln_cdf(x, lower_tail)` must return `ln P(X <= x)` (lower tail) or
+/// `ln P(X > x)`. Returns `-inf` for an empty interval.
+pub fn truncated_ln_normalization<E>(
+    lower: f64,
+    upper: f64,
+    mut ln_cdf: impl FnMut(f64, bool) -> Result<f64, E>,
+) -> Result<f64, E> {
+    Ok(match (lower.is_infinite(), upper.is_infinite()) {
+        (true, true) => 0.0,
+        (false, true) => ln_cdf(lower, false)?,
+        (true, false) => ln_cdf(upper, true)?,
+        (false, false) => {
+            // Subtract within whichever tail keeps both terms small, so the
+            // difference does not cancel.
+            let ln_lower = ln_cdf(lower, true)?;
+            if ln_lower <= -std::f64::consts::LN_2 {
+                let ln_upper = ln_cdf(upper, true)?;
+                ln_upper + ln_one_minus_exp(ln_lower - ln_upper)
+            } else {
+                let (ln_sf_lower, ln_sf_upper) = (ln_cdf(lower, false)?, ln_cdf(upper, false)?);
+                ln_sf_lower + ln_one_minus_exp(ln_sf_upper - ln_sf_lower)
+            }
+        }
+    })
+}
+
+/// `ln(1 - exp(x))` for `x <= 0`, accurate for `x` near 0 and very negative.
+fn ln_one_minus_exp(x: f64) -> f64 {
+    if x > -std::f64::consts::LN_2 {
+        (-x.exp_m1()).ln()
+    } else {
+        (-x.exp()).ln_1p()
     }
 }
 

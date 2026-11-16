@@ -4,7 +4,7 @@ use rmath::{dbeta, pbeta};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
 
@@ -176,8 +176,8 @@ impl Validate<PriorError> for BetaPrior {
 /// let off_mode = beta22.function(0.3).unwrap();
 /// assert!(at_mode > off_mode);
 /// ```
-impl Function<f64, f64, PriorError> for BetaPrior {
-    fn function(&self, x: f64) -> Result<f64, PriorError> {
+impl LogFunction<PriorError> for BetaPrior {
+    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
         self.validate()?;
 
         if !(0.0..=1.0).contains(&x) {
@@ -186,11 +186,11 @@ impl Function<f64, f64, PriorError> for BetaPrior {
 
         let (lower, upper) = self.range_or_default();
         if !(lower..=upper).contains(&x) {
-            return Ok(0.0);
+            return Ok(f64::NEG_INFINITY);
         }
-        Ok(dbeta!(x = x, shape1 = self.alpha, shape2 = self.beta)
-            .map_err(PriorError::DistributionError)?
-            / self.normalize()?)
+        let log_density = dbeta!(x = x, shape1 = self.alpha, shape2 = self.beta, log = true)
+            .map_err(PriorError::DistributionError)?;
+        Ok(log_density - self.normalize()?.ln())
     }
 }
 
@@ -218,6 +218,7 @@ impl Normalize for BetaPrior {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Function;
     use crate::prior::Prior;
     use approx::assert_relative_eq;
 
