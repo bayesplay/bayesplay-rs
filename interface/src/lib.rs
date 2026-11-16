@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use std::ops::Index;
 use thiserror::Error;
 
-#[derive(Debug, PartialEq, Serialize, Clone, Copy, Ord, PartialOrd, Eq, Hash)]
+/// A parameter name as it appears in JSON (`"mean"`, `"n1"`, `"ll"`, ...).
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Copy, Ord, PartialOrd, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
 pub enum ParameterName {
     Location,
     Scale,
@@ -21,11 +23,14 @@ pub enum ParameterName {
     Beta,
     Point,
     Df,
+    #[serde(rename = "ll")]
     LL,
+    #[serde(rename = "ul")]
     UL,
     Trials,
     Successes,
     Se,
+    U,
 }
 
 impl TryFrom<String> for ParameterName {
@@ -53,20 +58,8 @@ impl TryFrom<String> for ParameterName {
             "df" => Ok(ParameterName::Df),
             "trials" => Ok(ParameterName::Trials),
             "successes" => Ok(ParameterName::Successes),
+            "u" => Ok(ParameterName::U),
             _ => Err("Unknown Parameter"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ParameterName {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let name = String::deserialize(deserializer)?;
-        match TryInto::<ParameterName>::try_into(name) {
-            Ok(v) => Ok(v),
-            _ => Err(serde::de::Error::custom("Unknown parameter")),
         }
     }
 }
@@ -91,7 +84,9 @@ impl Index<ParameterName> for ParamDefinition {
     }
 }
 
-#[derive(PartialEq, Debug, Serialize, Clone, Copy)]
+/// A likelihood family as it appears in JSON (`"normal"`, `"noncentral_d2"`, ...).
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
 pub enum LikelihoodFamily {
     Normal,
     NoncentralD,
@@ -99,17 +94,7 @@ pub enum LikelihoodFamily {
     NoncentralD2,
     NoncentralT,
     Binomial,
-}
-
-impl<'de> Deserialize<'de> for LikelihoodFamily {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let v = String::deserialize(deserializer)?;
-        LikelihoodFamily::try_from(v.as_str())
-            .map_err(|v| serde::de::Error::custom(format!("Unknown likelihood family: {}", v)))
-    }
+    VarianceRatio,
 }
 
 impl TryFrom<&str> for LikelihoodFamily {
@@ -122,6 +107,7 @@ impl TryFrom<&str> for LikelihoodFamily {
             "noncentral_d2" => Ok(LikelihoodFamily::NoncentralD2),
             "binomial" => Ok(LikelihoodFamily::Binomial),
             "noncentral_t" => Ok(LikelihoodFamily::NoncentralT),
+            "variance_ratio" => Ok(LikelihoodFamily::VarianceRatio),
             f => Err(f.to_string()),
         }
     }
@@ -133,8 +119,6 @@ pub enum InterfaceError {
     MissingLikelihoodParameter(&'static str),
     #[error("{0} is missing from prior interface")]
     MissingPriorParameter(&'static str),
-    #[error("{0} could not be parsed")]
-    ParseError(&'static str),
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -154,7 +138,7 @@ pub enum InterfaceError {
 ///          "value": 0
 ///        },
 ///        {
-///          "name": "sd",
+///          "name": "se",
 ///          "value": 0.707
 ///        }
 ///      ]
@@ -176,6 +160,7 @@ pub struct LikelihoodInterface {
     /// - `noncentral_d` a non-central t-distribution (scaled for one-sample d)
     /// - `noncentral_d2` a non-central t-distribution (scaled for two-sample d)
     /// - `binomial` a binomial distribution
+    /// - `variance_ratio` a likelihood for a variance ratio against a reference
     ///
     /// The parameters that need to be specified will be dependent on the family
     pub family: LikelihoodFamily,
@@ -216,6 +201,10 @@ pub struct LikelihoodInterface {
     /// ### Binomial distribution (`LikelihoodFamily::Binomial`)
     /// - `trials` the number of trials
     /// - `successes` the number of successes
+    ///
+    /// ### Variance ratio (`LikelihoodFamily::VarianceRatio`)
+    /// - `u` the observed variance ratio
+    /// - `df` degrees of freedom
     pub params: ParamDefinition,
 }
 
@@ -296,12 +285,21 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
                     .ok_or(Self::Error::MissingLikelihoodParameter("successes"))?;
                 BinomialLikelihood::new(successes, trials).into()
             }
+            LikelihoodFamily::VarianceRatio => {
+                let u = value.params[ParameterName::U]
+                    .ok_or(Self::Error::MissingLikelihoodParameter("u"))?;
+                let df = value.params[ParameterName::Df]
+                    .ok_or(Self::Error::MissingLikelihoodParameter("df"))?;
+                VarianceRatioLikelihood::new(u, df).into()
+            }
         };
         Ok(likelihood)
     }
 }
 
-#[derive(PartialEq, Debug, Serialize, Clone, Copy)]
+/// A prior family as it appears in JSON (`"cauchy"`, `"beta_prime"`, ...).
+#[derive(PartialEq, Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
 pub enum PriorFamily {
     Cauchy,
     Normal,
@@ -309,17 +307,7 @@ pub enum PriorFamily {
     Uniform,
     StudentT,
     Beta,
-}
-
-impl<'de> Deserialize<'de> for PriorFamily {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let v = String::deserialize(deserializer)?;
-        PriorFamily::try_from(v.as_str())
-            .map_err(|v| serde::de::Error::custom(format!("Unknown Prior family: {}", v)))
-    }
+    BetaPrime,
 }
 
 impl TryFrom<&str> for PriorFamily {
@@ -332,6 +320,7 @@ impl TryFrom<&str> for PriorFamily {
             "uniform" => Ok(PriorFamily::Uniform),
             "student_t" => Ok(PriorFamily::StudentT),
             "beta" => Ok(PriorFamily::Beta),
+            "beta_prime" => Ok(PriorFamily::BetaPrime),
             f => Err(f.to_string()),
         }
     }
@@ -379,9 +368,10 @@ pub struct PriorInterface {
     ///
     /// - `normal` a normal distribution
     /// - `cauchy` a Cauchy distribution
-    //  - `student_t` a scaled and shifted t-distribution
-    //  - `uniform` a uniform distribution
-    //  - `beta` a beta distribution
+    /// - `student_t` a scaled and shifted t-distribution
+    /// - `uniform` a uniform distribution
+    /// - `beta` a beta distribution
+    /// - `beta_prime` a symmetric beta-prime distribution (for positive ratios)
     /// - `point` a point
     ///
     /// The parameters that need to be specified will be dependent on the family
@@ -426,10 +416,15 @@ pub struct PriorInterface {
     /// - `max` the upper limit of the uniform distribution
     ///
     /// ### Beta distribution (`PriorFamily::Beta`)
-    /// - `shape1` the first shape parameter of the beta distribution
-    /// - `shape2` the second shape parameter of the beta distribution
+    /// - `alpha` the first shape parameter of the beta distribution
+    /// - `beta` the second shape parameter of the beta distribution
     /// - (optional) `ll` the lower limit (default: 0)
     /// - (optional) `ul` the upper limit (default: 1)
+    ///
+    /// ### Beta-prime distribution (`PriorFamily::BetaPrime`)
+    /// - `alpha` the shape parameter (both shapes are equal)
+    /// - (optional) `ll` the lower limit (default: 0)
+    /// - (optional) `ul` the upper limit (default: pos infinity)
     ///
     /// ### Point (`Prior::Point`)
     /// - `point` the location of the spike
@@ -496,11 +491,20 @@ impl TryFrom<PriorInterface> for Prior {
                     value.params[ParameterName::LL],
                     value.params[ParameterName::UL],
                 );
-                let shape1 = value.params[ParameterName::Alpha]
-                    .ok_or(InterfaceError::MissingPriorParameter("shape1"))?;
-                let shape2 = value.params[ParameterName::Beta]
-                    .ok_or(InterfaceError::MissingPriorParameter("shape2"))?;
-                BetaPrior::new(shape1, shape2, range).into()
+                let alpha = value.params[ParameterName::Alpha]
+                    .ok_or(InterfaceError::MissingPriorParameter("alpha"))?;
+                let beta = value.params[ParameterName::Beta]
+                    .ok_or(InterfaceError::MissingPriorParameter("beta"))?;
+                BetaPrior::new(alpha, beta, range).into()
+            }
+            PriorFamily::BetaPrime => {
+                let range = (
+                    value.params[ParameterName::LL],
+                    value.params[ParameterName::UL],
+                );
+                let alpha = value.params[ParameterName::Alpha]
+                    .ok_or(InterfaceError::MissingPriorParameter("alpha"))?;
+                BetaPrimePrior::new(alpha, range).into()
             }
         };
 
@@ -521,6 +525,82 @@ mod tests {
         assert!((prior.function(0.75).unwrap() - 2.0).abs() < 1e-12);
         let likelihood: Likelihood = BinomialLikelihood::new(1.0, 1.0).into();
         assert!(((likelihood * prior).integral().unwrap().value - 7.0 / 9.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn interfaces_round_trip_through_json() {
+        let likelihood = r#"{"family":"noncentral_d2","params":[{"name":"d","value":0.5},{"name":"n1","value":20.0},{"name":"n2","value":25.0}]}"#;
+        let parsed: LikelihoodInterface = serde_json::from_str(likelihood).unwrap();
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), likelihood);
+
+        let prior = r#"{"family":"cauchy","params":[{"name":"location","value":0.0},{"name":"scale","value":0.707},{"name":"ll","value":null},{"name":"ul","value":0.0}]}"#;
+        let parsed: PriorInterface = serde_json::from_str(prior).unwrap();
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), prior);
+    }
+
+    #[test]
+    fn serde_names_match_try_from_names() {
+        use ParameterName::*;
+        for name in [
+            Location, Scale, Sd, Mean, N1, N2, N, D, T, Tails, Min, Max, Alpha, Beta, Point, Df,
+            LL, UL, Trials, Successes, Se, U,
+        ] {
+            let json = serde_json::to_string(&name).unwrap();
+            let text: String = serde_json::from_str(&json).unwrap();
+            assert_eq!(ParameterName::try_from(text), Ok(name));
+        }
+        for family in [
+            "normal",
+            "noncentral_d",
+            "student_t",
+            "noncentral_d2",
+            "noncentral_t",
+            "binomial",
+            "variance_ratio",
+        ] {
+            let parsed = LikelihoodFamily::try_from(family).unwrap();
+            assert_eq!(
+                serde_json::to_string(&parsed).unwrap(),
+                format!("\"{family}\"")
+            );
+        }
+        for family in [
+            "cauchy",
+            "normal",
+            "point",
+            "uniform",
+            "student_t",
+            "beta",
+            "beta_prime",
+        ] {
+            let parsed = PriorFamily::try_from(family).unwrap();
+            assert_eq!(
+                serde_json::to_string(&parsed).unwrap(),
+                format!("\"{family}\"")
+            );
+        }
+    }
+
+    #[test]
+    fn variance_ratio_and_beta_prime_are_reachable_from_json() {
+        let likelihood: LikelihoodInterface = serde_json::from_str(
+            r#"{"family":"variance_ratio","params":[{"name":"u","value":1.6},{"name":"df","value":9}]}"#,
+        )
+        .unwrap();
+        let likelihood = Likelihood::try_from(likelihood).unwrap();
+        let prior = prior_from_json(
+            r#"{"family":"beta_prime","params":[{"name":"alpha","value":0.5},{"name":"ll","value":1}]}"#,
+        );
+        assert!(matches!(likelihood, Likelihood::VarianceRatio(_)));
+        assert!(matches!(prior, Prior::BetaPrime(_)));
+        assert!((likelihood * prior).integral().unwrap().value > 0.0);
+    }
+
+    #[test]
+    fn unknown_names_are_rejected() {
+        assert!(serde_json::from_str::<ParameterName>(r#""nope""#).is_err());
+        assert!(serde_json::from_str::<LikelihoodFamily>(r#""nope""#).is_err());
+        assert!(serde_json::from_str::<PriorFamily>(r#""nope""#).is_err());
     }
 
     fn prior_from_json(json: &str) -> Prior {
