@@ -39,15 +39,19 @@ impl Case {
     fn likelihood(&self) -> Likelihood {
         let d = self.t / self.effective_n().sqrt();
         if self.n2 == 0.0 {
-            NoncentralDLikelihood::new(d, self.n1).into()
+            NoncentralDLikelihood::new(d, self.n1).unwrap().into()
         } else {
-            NoncentralD2Likelihood::new(d, self.n1, self.n2).into()
+            NoncentralD2Likelihood::new(d, self.n1, self.n2)
+                .unwrap()
+                .into()
         }
     }
 
     fn prior(&self) -> Prior {
         let bound = |x: f64| x.is_finite().then_some(x);
-        CauchyPrior::new(0.0, self.rscale, (bound(self.lower), bound(self.upper))).into()
+        CauchyPrior::new(0.0, self.rscale, (bound(self.lower), bound(self.upper)))
+            .unwrap()
+            .into()
     }
 
     fn log_bf(&self) -> f64 {
@@ -55,7 +59,7 @@ impl Case {
         let h1 = (likelihood * self.prior())
             .integral()
             .unwrap_or_else(|e| panic!("{self:?}: H1 marginal failed: {e}"));
-        let h0 = (likelihood * Prior::from(PointPrior::new(0.0)))
+        let h0 = (likelihood * Prior::from(PointPrior::new(0.0).unwrap()))
             .integral()
             .unwrap_or_else(|e| panic!("{self:?}: H0 marginal failed: {e}"));
         (h1 / h0).ln()
@@ -192,11 +196,11 @@ fn bayes_factors_survive_an_underflowing_null_marginal() {
         (-3.0, None, None, 1_145.466_267_695_54),
         (-3.0, Some(0.0), None, -6.960_348_297_581_5),
     ] {
-        let likelihood: Likelihood = NoncentralDLikelihood::new(d, n).into();
-        let h1 = (likelihood * Prior::from(CauchyPrior::new(0.0, 0.707, (lower, upper))))
+        let likelihood: Likelihood = NoncentralDLikelihood::new(d, n).unwrap().into();
+        let h1 = (likelihood * Prior::from(CauchyPrior::new(0.0, 0.707, (lower, upper)).unwrap()))
             .integral()
             .unwrap();
-        let h0 = (likelihood * Prior::from(PointPrior::new(0.0)))
+        let h0 = (likelihood * Prior::from(PointPrior::new(0.0).unwrap()))
             .integral()
             .unwrap();
         assert_eq!(h0.value, 0.0, "the null marginal should underflow");

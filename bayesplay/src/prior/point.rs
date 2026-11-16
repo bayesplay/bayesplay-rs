@@ -30,10 +30,10 @@ use serde::{Deserialize, Serialize};
 /// use bayesplay::prelude::*;
 ///
 /// // Null hypothesis: effect size is exactly 0
-/// let null_prior = PointPrior::new(0.0);
+/// let null_prior = PointPrior::new(0.0).unwrap();
 ///
 /// // Combine with a likelihood
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
 /// let null_model: Model = likelihood * Prior::from(null_prior);
 ///
 /// // The marginal likelihood equals the likelihood evaluated at the point
@@ -48,13 +48,13 @@ use serde::{Deserialize, Serialize};
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
 ///
 /// // Null: effect is exactly 0
-/// let h0: Model = likelihood * Prior::from(PointPrior::new(0.0));
+/// let h0: Model = likelihood * Prior::from(PointPrior::new(0.0).unwrap());
 ///
 /// // Alternative: effect follows a normal distribution
-/// let h1: Model = likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)));
+/// let h1: Model = likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)).unwrap());
 ///
 /// // Bayes factor (BF10 = evidence for H1 over H0)
 /// let bf10 = h1.integral().unwrap() / h0.integral().unwrap();
@@ -77,15 +77,17 @@ impl PointPrior {
     /// ```rust
     /// use bayesplay::prelude::*;
     ///
-    /// let null = PointPrior::new(0.0);
+    /// let null = PointPrior::new(0.0).unwrap();
     /// assert_eq!(null.point, 0.0);
     ///
     /// // Point prior at a non-zero value
-    /// let specific = PointPrior::new(0.5);
+    /// let specific = PointPrior::new(0.5).unwrap();
     /// assert_eq!(specific.point, 0.5);
     /// ```
-    pub fn new(point: f64) -> Self {
-        PointPrior { point }
+    pub fn new(point: f64) -> Result<Self, PriorError> {
+        let value = PointPrior { point };
+        value.validate()?;
+        Ok(value)
     }
 }
 
@@ -98,7 +100,7 @@ impl PointPrior {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let valid = PointPrior::new(0.0);
+/// let valid = PointPrior::new(0.0).unwrap();
 /// assert!(valid.validate().is_ok());
 ///
 /// let invalid = PointPrior { point: f64::NAN };
@@ -126,7 +128,7 @@ impl Validate<PriorError> for PointPrior {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let prior = PointPrior::new(0.0);
+/// let prior = PointPrior::new(0.0).unwrap();
 ///
 /// assert_eq!(prior.function(0.0).unwrap(), 1.0);
 /// assert_eq!(prior.function(0.5).unwrap(), 0.0);
@@ -168,7 +170,7 @@ mod tests {
 
     #[test]
     fn test_point_prior_creation() {
-        let prior: Prior = PointPrior::new(0.0).into();
+        let prior: Prior = PointPrior::new(0.0).unwrap().into();
         if let Prior::Point(p) = prior {
             assert_eq!(p.point, 0.0);
         } else {
@@ -178,27 +180,27 @@ mod tests {
 
     #[test]
     fn test_point_prior_at_point() {
-        let point = PointPrior::new(0.0);
+        let point = PointPrior::new(0.0).unwrap();
         assert_eq!(point.function(0.0).unwrap(), 1.0);
     }
 
     #[test]
     fn test_point_prior_away_from_point() {
-        let point = PointPrior::new(0.0);
+        let point = PointPrior::new(0.0).unwrap();
         assert_eq!(point.function(0.5).unwrap(), 0.0);
         assert_eq!(point.function(-1.0).unwrap(), 0.0);
     }
 
     #[test]
     fn test_point_prior_nonzero_point() {
-        let point = PointPrior::new(0.5);
+        let point = PointPrior::new(0.5).unwrap();
         assert_eq!(point.function(0.5).unwrap(), 1.0);
         assert_eq!(point.function(0.0).unwrap(), 0.0);
     }
 
     #[test]
     fn test_point_prior_validation_valid() {
-        let point = PointPrior::new(0.0);
+        let point = PointPrior::new(0.0).unwrap();
         assert!(point.validate().is_ok());
     }
 
@@ -210,13 +212,13 @@ mod tests {
 
     #[test]
     fn test_point_prior_normalization() {
-        let point = PointPrior::new(0.0);
+        let point = PointPrior::new(0.0).unwrap();
         assert_eq!(point.normalize().unwrap(), 1.0);
     }
 
     #[test]
     fn test_point_prior_range() {
-        let point = PointPrior::new(0.5);
+        let point = PointPrior::new(0.5).unwrap();
         assert_eq!(point.range(), (Some(0.5), Some(0.5)));
         assert_eq!(point.default_range(), (0.5, 0.5));
     }

@@ -32,8 +32,8 @@ use crate::prior::*;
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 ///
 /// // Both of these create the same model
 /// let model1: Model = likelihood * prior;
@@ -47,8 +47,8 @@ use crate::prior::*;
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 /// let model: Model = likelihood * prior;
 ///
 /// let posterior = model.posterior().unwrap();
@@ -65,14 +65,14 @@ use crate::prior::*;
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
 ///
 /// // H1: effect follows a normal distribution
-/// let h1_prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let h1_prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 /// let h1_model: Model = likelihood * h1_prior;
 ///
 /// // H0: effect is exactly zero
-/// let h0_prior: Prior = PointPrior::new(0.0).into();
+/// let h0_prior: Prior = PointPrior::new(0.0).unwrap().into();
 /// let h0_model: Model = likelihood * h0_prior;
 ///
 /// // Bayes factor (BF10)
@@ -114,8 +114,8 @@ impl Model {
     /// ```rust
     /// use bayesplay::prelude::*;
     ///
-    /// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+    /// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
     /// let model: Model = likelihood * prior;
     ///
     /// assert_eq!(model.get_observation(), Some(0.5));
@@ -139,8 +139,8 @@ impl Model {
     /// ```rust
     /// use bayesplay::prelude::*;
     ///
-    /// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+    /// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
     /// let model: Model = likelihood * prior;
     ///
     /// let posterior = model.posterior().unwrap();
@@ -169,8 +169,8 @@ impl Model {
     ///
     /// // The marginal is ~1e-174, far below what `integrate` can represent
     /// // relative to its tails, but its logarithm is exact.
-    /// let likelihood: Likelihood = NormalLikelihood::new(40.0, 1.0).into();
-    /// let model = likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)));
+    /// let likelihood: Likelihood = NormalLikelihood::new(40.0, 1.0).unwrap().into();
+    /// let model = likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)).unwrap());
     /// let expected = -400.0 - 0.5 * (4.0 * std::f64::consts::PI).ln();
     /// assert!((model.ln_integrate(None, None).unwrap() - expected).abs() < 1e-8);
     /// ```
@@ -216,8 +216,8 @@ impl Model {
     /// ```rust
     /// use bayesplay::prelude::*;
     ///
-    /// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+    /// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
     /// let model: Model = likelihood * prior;
     ///
     /// let predictive = model.predictive();
@@ -252,8 +252,8 @@ impl Integrate<IntegralError, IntegralError> for Model {
     /// ```
     /// use bayesplay::prelude::*;
     ///
-    /// let likelihood: Likelihood = NormalLikelihood::new(0.2, 4.0).into();
-    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+    /// let likelihood: Likelihood = NormalLikelihood::new(0.2, 4.0).unwrap().into();
+    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
     /// let auc = (likelihood * prior).integral().unwrap();
     ///
     /// assert_eq!(auc.value as f32, 0.09664394965841581 as f32);
@@ -550,8 +550,8 @@ fn curvature_width(
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 /// let model: Model = likelihood * prior;
 /// let posterior = model.posterior().unwrap();
 ///
@@ -570,8 +570,8 @@ fn curvature_width(
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 /// let model: Model = likelihood * prior;
 /// let posterior = model.posterior().unwrap();
 ///
@@ -596,8 +596,8 @@ pub struct Posterior {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 /// let model: Model = likelihood * prior;
 ///
 /// let predictive = model.predictive();
@@ -703,11 +703,14 @@ mod tests {
 
     #[test]
     fn predictive_effect_size_jacobians_preserve_kernels() {
-        let prior: Prior = PointPrior::new(0.0).into();
+        let prior: Prior = PointPrior::new(0.0).unwrap().into();
         for (likelihood, jacobian) in [
-            (Likelihood::from(NoncentralDLikelihood::new(0.2, 25.0)), 5.0),
             (
-                Likelihood::from(NoncentralD2Likelihood::new(0.2, 20.0, 30.0)),
+                Likelihood::from(NoncentralDLikelihood::new(0.2, 25.0).unwrap()),
+                5.0,
+            ),
+            (
+                Likelihood::from(NoncentralD2Likelihood::new(0.2, 20.0, 30.0).unwrap()),
                 12.0_f64.sqrt(),
             ),
         ] {
@@ -728,8 +731,8 @@ mod tests {
     #[test]
     fn large_noncentral_t_statistics_integrate_exactly() {
         // Formerly rejected with "requires reparameterization".
-        let likelihood: Likelihood = NoncentralTLikelihood::new(20.0, 20.0).into();
-        let model = likelihood * Prior::from(CauchyPrior::new(0.0, 0.7, (None, None)));
+        let likelihood: Likelihood = NoncentralTLikelihood::new(20.0, 20.0).unwrap().into();
+        let model = likelihood * Prior::from(CauchyPrior::new(0.0, 0.7, (None, None)).unwrap());
         let value = model.integral().unwrap().value;
         assert!(value.is_finite() && value > 0.0);
         assert_relative_eq!(
@@ -754,14 +757,14 @@ mod tests {
 
     #[test]
     fn point_posterior_and_bounded_model_integrals() {
-        let likelihood: Likelihood = NormalLikelihood::new(0.0, 1.0).into();
-        let model = likelihood * Prior::from(PointPrior::new(0.5));
+        let likelihood: Likelihood = NormalLikelihood::new(0.0, 1.0).unwrap().into();
+        let model = likelihood * Prior::from(PointPrior::new(0.5).unwrap());
         let posterior = model.posterior().unwrap();
         assert_eq!(posterior.integral().unwrap().value, 1.0);
         assert_eq!(posterior.integrate(Some(0.5), Some(0.5)).unwrap(), 1.0);
         assert_eq!(posterior.integrate(Some(0.6), None).unwrap(), 0.0);
         assert_eq!(model.integrate(Some(-1.0), Some(0.0)).unwrap(), 0.0);
-        let model = likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)));
+        let model = likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)).unwrap());
         assert_relative_eq!(
             model.integrate(None, Some(0.0)).unwrap(),
             model.integral().unwrap().value / 2.0,
@@ -780,8 +783,8 @@ mod tests {
     #[test]
     fn posterior_of_massless_model_is_an_error() {
         // A variance ratio is positive, so a prior on negative values has no mass.
-        let model = Likelihood::from(VarianceRatioLikelihood::new(1.5, 9.0))
-            * Prior::from(UniformPrior::new(-2.0, -1.0));
+        let model = Likelihood::from(VarianceRatioLikelihood::new(1.5, 9.0).unwrap())
+            * Prior::from(UniformPrior::new(-2.0, -1.0).unwrap());
         assert!(matches!(
             model.posterior(),
             Err(IntegralError::DegeneratePosterior(_))
@@ -791,8 +794,8 @@ mod tests {
 
     #[test]
     fn point_prior_marginals_keep_their_log_when_they_underflow() {
-        let model =
-            Likelihood::from(NormalLikelihood::new(1e100, 1.0)) * Prior::from(PointPrior::new(0.0));
+        let model = Likelihood::from(NormalLikelihood::new(1e100, 1.0).unwrap())
+            * Prior::from(PointPrior::new(0.0).unwrap());
         let auc = model.integral().unwrap();
         assert_eq!(auc.value, 0.0);
         let expected = -0.5 * 1e200 - 0.5 * (2.0 * std::f64::consts::PI).ln();
@@ -818,8 +821,8 @@ mod tests {
                 (0.001, 1.0),
                 (1e-4, 100.0),
             ] {
-                let likelihood: Likelihood = NormalLikelihood::new(mean, se).into();
-                let prior: Prior = NormalPrior::new(0.0, sd, (None, None)).into();
+                let likelihood: Likelihood = NormalLikelihood::new(mean, se).unwrap().into();
+                let prior: Prior = NormalPrior::new(0.0, sd, (None, None)).unwrap().into();
                 let want = rmath::dnorm(mean, 0.0, f64::hypot(se, sd), true).unwrap();
                 let got = (likelihood * prior).integral().unwrap().log_value;
                 assert!(
@@ -835,11 +838,11 @@ mod tests {
         // N(m, 1) likelihood: H1 = N(0, 1) prior, H0 = point at 0.
         // log BF10 = ln N(m; 0, sqrt 2) - ln N(m; 0, 1) = m^2 / 4 - ln(2) / 2.
         for mean in [5.0, 40.0, 60.0, 100.0] {
-            let likelihood: Likelihood = NormalLikelihood::new(mean, 1.0).into();
-            let h1 = (likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None))))
+            let likelihood: Likelihood = NormalLikelihood::new(mean, 1.0).unwrap().into();
+            let h1 = (likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)).unwrap()))
                 .integral()
                 .unwrap();
-            let h0 = (likelihood * Prior::from(PointPrior::new(0.0)))
+            let h0 = (likelihood * Prior::from(PointPrior::new(0.0).unwrap()))
                 .integral()
                 .unwrap();
             let want = mean * mean / 4.0 - std::f64::consts::LN_2 / 2.0;
@@ -855,8 +858,8 @@ mod tests {
     fn posteriors_of_extreme_models() {
         // N(60, 1) likelihood x N(0, 1) prior: posterior N(30, 1/sqrt 2), while
         // the marginal is ~1e-391.
-        let model = Likelihood::from(NormalLikelihood::new(60.0, 1.0))
-            * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)));
+        let model = Likelihood::from(NormalLikelihood::new(60.0, 1.0).unwrap())
+            * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)).unwrap());
         assert_eq!(model.integral().unwrap().value, 0.0);
         let posterior = model.posterior().unwrap();
         assert_relative_eq!(posterior.integral().unwrap().value, 1.0, epsilon = 1e-9);
@@ -877,7 +880,7 @@ mod tests {
         // N(0, 1) truncated to [40, inf): mass Q(40) = exp(-804.608...), which
         // underflows. R: pnorm(40, lower.tail = FALSE, log.p = TRUE).
         let ln_mass = -804.608_442_013_753_8;
-        let prior = NormalPrior::new(0.0, 1.0, (Some(40.0), None));
+        let prior = NormalPrior::new(0.0, 1.0, (Some(40.0), None)).unwrap();
         assert_relative_eq!(prior.ln_normalize().unwrap(), ln_mass, max_relative = 1e-14);
         let ln_phi_41 = -0.5 * 41.0 * 41.0 - 0.5 * (2.0 * std::f64::consts::PI).ln();
         assert_relative_eq!(
@@ -889,14 +892,16 @@ mod tests {
         assert_relative_eq!(prior.integral().unwrap().value, 1.0, epsilon = 1e-8);
 
         // A likelihood centred in that tail sees an ordinary marginal.
-        let model = Likelihood::from(NormalLikelihood::new(40.5, 0.1)) * prior;
+        let model = Likelihood::from(NormalLikelihood::new(40.5, 0.1).unwrap()) * prior;
         let value = model.integral().unwrap().value;
         assert!(value.is_finite() && value > 0.0);
 
         // Cauchy and Student-t far tails go through the same log path.
         for prior in [
-            Prior::from(CauchyPrior::new(0.0, 1.0, (Some(1e10), Some(2e10)))),
-            StudentTPrior::new(0.0, 1.0, 3.0, (Some(1e6), None)).into(),
+            Prior::from(CauchyPrior::new(0.0, 1.0, (Some(1e10), Some(2e10))).unwrap()),
+            StudentTPrior::new(0.0, 1.0, 3.0, (Some(1e6), None))
+                .unwrap()
+                .into(),
         ] {
             assert_relative_eq!(prior.integral().unwrap().value, 1.0, epsilon = 1e-7);
         }
@@ -904,8 +909,8 @@ mod tests {
 
     #[test]
     fn sharp_likelihood_posterior_is_centred() {
-        let model = Likelihood::from(NormalLikelihood::new(8.0, 0.01))
-            * Prior::from(NormalPrior::new(0.0, 10.0, (None, None)));
+        let model = Likelihood::from(NormalLikelihood::new(8.0, 0.01).unwrap())
+            * Prior::from(NormalPrior::new(0.0, 10.0, (None, None)).unwrap());
         let posterior = model.posterior().unwrap();
         assert_relative_eq!(
             posterior.integrate(None, Some(8.0)).unwrap(),
@@ -919,12 +924,16 @@ mod tests {
     fn sharp_likelihoods_under_heavy_tailed_priors() {
         // With se = 1e-3 the likelihood is ~ a delta at 8, so the marginal is
         // the prior density at 8 (to O(se^2)).
-        let likelihood: Likelihood = NormalLikelihood::new(8.0, 1e-3).into();
+        let likelihood: Likelihood = NormalLikelihood::new(8.0, 1e-3).unwrap().into();
         for prior in [
-            Prior::from(CauchyPrior::new(0.0, 1.0, (None, None))),
-            StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).into(),
-            NormalPrior::new(0.0, 10.0, (Some(0.0), None)).into(),
-            UniformPrior::new(0.0, 20.0).into(),
+            Prior::from(CauchyPrior::new(0.0, 1.0, (None, None)).unwrap()),
+            StudentTPrior::new(0.0, 1.0, 3.0, (None, None))
+                .unwrap()
+                .into(),
+            NormalPrior::new(0.0, 10.0, (Some(0.0), None))
+                .unwrap()
+                .into(),
+            UniformPrior::new(0.0, 20.0).unwrap().into(),
         ] {
             let got = (likelihood * prior).integral().unwrap().value;
             assert_relative_eq!(got, prior.function(8.0).unwrap(), max_relative = 1e-5);
@@ -933,8 +942,8 @@ mod tests {
 
     #[test]
     fn model_round_trips_through_json() {
-        let model = Likelihood::from(NormalLikelihood::new(0.5, 0.2))
-            * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)));
+        let model = Likelihood::from(NormalLikelihood::new(0.5, 0.2).unwrap())
+            * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)).unwrap());
         let json = serde_json::to_string(&model).unwrap();
         let back: Model = serde_json::from_str(&json).unwrap();
         assert_eq!(back, model);

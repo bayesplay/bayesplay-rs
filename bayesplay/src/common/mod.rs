@@ -14,7 +14,7 @@ use approx::{AbsDiffEq, RelativeEq};
 /// use bayesplay::prelude::*;
 ///
 /// // Valid parameters
-/// let likelihood = NormalLikelihood::new(0.0, 1.0);
+/// let likelihood = NormalLikelihood::new(0.0, 1.0).unwrap();
 /// assert!(likelihood.validate().is_ok());
 ///
 /// // Invalid parameters (negative standard error)
@@ -48,7 +48,7 @@ pub trait Validate<E> {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let prior = NormalPrior::new(0.0, 1.0, (None, None));
+/// let prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap();
 ///
 /// // Evaluate at a single point
 /// let density = prior.function(0.0).unwrap();
@@ -81,7 +81,7 @@ pub trait Function<T, S, E> {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood = NormalLikelihood::new(40.0, 1.0);
+/// let likelihood = NormalLikelihood::new(40.0, 1.0).unwrap();
 /// assert_eq!(likelihood.function(0.0).unwrap(), 0.0); // underflows
 /// let log_density = likelihood.ln_function(0.0).unwrap();
 /// assert!((log_density - (-800.0 - 0.5 * (2.0 * std::f64::consts::PI).ln())).abs() < 1e-9);
@@ -109,11 +109,11 @@ impl<T: LogFunction<E>, E> Function<f64, f64, E> for T {
 /// use bayesplay::prelude::*;
 ///
 /// // Unbounded normal prior
-/// let unbounded = NormalPrior::new(0.0, 1.0, (None, None));
+/// let unbounded = NormalPrior::new(0.0, 1.0, (None, None)).unwrap();
 /// assert!(unbounded.has_default_range());
 ///
 /// // Truncated normal prior (positive values only)
-/// let truncated = NormalPrior::new(0.0, 1.0, (Some(0.0), None));
+/// let truncated = NormalPrior::new(0.0, 1.0, (Some(0.0), None)).unwrap();
 /// assert!(!truncated.has_default_range());
 /// assert_eq!(truncated.range(), (Some(0.0), None));
 /// ```
@@ -162,9 +162,9 @@ pub trait Range {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-/// let h1: Auc = (likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)))).integral().unwrap();
-/// let h0: Auc = (likelihood * Prior::from(PointPrior::new(0.0))).integral().unwrap();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+/// let h1: Auc = (likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)).unwrap())).integral().unwrap();
+/// let h0: Auc = (likelihood * Prior::from(PointPrior::new(0.0).unwrap())).integral().unwrap();
 /// let bf10: f64 = h1 / h0;
 /// assert!(bf10 > 1.0);
 /// ```
@@ -292,8 +292,8 @@ impl RelativeEq<f64> for Auc {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 /// let model: Model = likelihood * prior;
 ///
 /// // Compute the marginal likelihood (area under the curve)

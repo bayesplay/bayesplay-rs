@@ -46,16 +46,16 @@ use super::PriorError;
 /// use bayesplay::prelude::*;
 ///
 /// // Uniform prior (Beta(1,1))
-/// let uniform = BetaPrior::new(1.0, 1.0, (None, None));
+/// let uniform = BetaPrior::new(1.0, 1.0, (None, None)).unwrap();
 ///
 /// // Jeffreys' prior (Beta(0.5, 0.5))
-/// let jeffreys = BetaPrior::new(0.5, 0.5, (None, None));
+/// let jeffreys = BetaPrior::new(0.5, 0.5, (None, None)).unwrap();
 ///
 /// // Prior favoring values around 0.5
-/// let centered = BetaPrior::new(5.0, 5.0, (None, None));
+/// let centered = BetaPrior::new(5.0, 5.0, (None, None)).unwrap();
 ///
 /// // Combine with a binomial likelihood (conjugate pair)
-/// let likelihood: Likelihood = BinomialLikelihood::new(7.0, 10.0).into();
+/// let likelihood: Likelihood = BinomialLikelihood::new(7.0, 10.0).unwrap().into();
 /// let model: Model = likelihood * Prior::from(uniform);
 /// ```
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
@@ -83,13 +83,19 @@ impl BetaPrior {
     /// use bayesplay::prelude::*;
     ///
     /// // Uniform prior
-    /// let uniform = BetaPrior::new(1.0, 1.0, (None, None));
+    /// let uniform = BetaPrior::new(1.0, 1.0, (None, None)).unwrap();
     ///
     /// // Informative prior centered around 0.7
-    /// let informative = BetaPrior::new(7.0, 3.0, (None, None));
+    /// let informative = BetaPrior::new(7.0, 3.0, (None, None)).unwrap();
     /// ```
-    pub fn new(alpha: f64, beta: f64, range: (Option<f64>, Option<f64>)) -> Self {
-        BetaPrior { alpha, beta, range }
+    pub fn new(
+        alpha: f64,
+        beta: f64,
+        range: (Option<f64>, Option<f64>),
+    ) -> Result<Self, PriorError> {
+        let value = BetaPrior { alpha, beta, range };
+        value.validate()?;
+        Ok(value)
     }
 }
 
@@ -117,16 +123,17 @@ impl Range for BetaPrior {
 /// use bayesplay::prelude::*;
 ///
 /// // Valid parameters
-/// let valid = BetaPrior::new(1.0, 1.0, (None, None));
+/// let valid = BetaPrior::new(1.0, 1.0, (None, None)).unwrap();
 /// assert!(valid.validate().is_ok());
 ///
 /// // Invalid: negative shape parameter
-/// let invalid = BetaPrior::new(-1.0, 1.0, (None, None));
-/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidShapeParameter(_))));
+/// assert!(matches!(BetaPrior::new(-1.0, 1.0, (None, None)), Err(PriorError::InvalidShapeParameter(_))));
 ///
 /// // Invalid: range outside [0, 1]
-/// let invalid = BetaPrior::new(1.0, 1.0, (Some(-0.5), None));
-/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidRangeBounds)));
+/// assert!(matches!(
+///     BetaPrior::new(1.0, 1.0, (Some(-0.5), None)),
+///     Err(PriorError::InvalidRangeBounds)
+/// ));
 /// ```
 impl Validate<PriorError> for BetaPrior {
     fn validate(&self) -> Result<(), PriorError> {
@@ -166,11 +173,11 @@ impl Validate<PriorError> for BetaPrior {
 /// use bayesplay::prelude::*;
 ///
 /// // Beta(1,1) is uniform on [0,1], so density = 1 everywhere
-/// let uniform = BetaPrior::new(1.0, 1.0, (None, None));
+/// let uniform = BetaPrior::new(1.0, 1.0, (None, None)).unwrap();
 /// assert!((uniform.function(0.5).unwrap() - 1.0).abs() < 1e-10);
 ///
 /// // Beta(2,2) has mode at 0.5
-/// let beta22 = BetaPrior::new(2.0, 2.0, (None, None));
+/// let beta22 = BetaPrior::new(2.0, 2.0, (None, None)).unwrap();
 /// let at_mode = beta22.function(0.5).unwrap();
 /// let off_mode = beta22.function(0.3).unwrap();
 /// assert!(at_mode > off_mode);
@@ -216,26 +223,26 @@ mod tests {
 
     #[test]
     fn truncated_beta_density_and_tail_mass() {
-        let prior = BetaPrior::new(2.0, 2.0, (Some(0.25), Some(0.75)));
+        let prior = BetaPrior::new(2.0, 2.0, (Some(0.25), Some(0.75))).unwrap();
         assert_relative_eq!(prior.normalize().unwrap(), 11.0 / 16.0, epsilon = 1e-14);
         assert_relative_eq!(prior.function(0.5).unwrap(), 24.0 / 11.0, epsilon = 1e-14);
         assert_eq!(prior.function(0.2).unwrap(), 0.0);
         assert_eq!(prior.function(0.8).unwrap(), 0.0);
-        let tail = BetaPrior::new(1.0, 5.0, (Some(0.999), None));
+        let tail = BetaPrior::new(1.0, 5.0, (Some(0.999), None)).unwrap();
         assert_relative_eq!(
             tail.normalize().unwrap(),
             (1.0_f64 - 0.999).powi(5),
             max_relative = 1e-12
         );
-        let lower = BetaPrior::new(2.0, 1.0, (None, Some(0.5)));
+        let lower = BetaPrior::new(2.0, 1.0, (None, Some(0.5))).unwrap();
         assert_relative_eq!(lower.normalize().unwrap(), 0.25, epsilon = 1e-14);
     }
 
     #[test]
     fn truncated_beta_binomial_model_matches_polynomial_integral() {
         use crate::prelude::*;
-        let likelihood: Likelihood = BinomialLikelihood::new(1.0, 1.0).into();
-        let prior: Prior = BetaPrior::new(2.0, 1.0, (Some(0.5), None)).into();
+        let likelihood: Likelihood = BinomialLikelihood::new(1.0, 1.0).unwrap().into();
+        let prior: Prior = BetaPrior::new(2.0, 1.0, (Some(0.5), None)).unwrap().into();
         let model = likelihood * prior;
         assert_relative_eq!(model.integral().unwrap().value, 7.0 / 9.0, epsilon = 1e-12);
         let posterior = model.posterior().unwrap();
@@ -251,14 +258,22 @@ mod tests {
     fn invalid_beta_parameters_return_errors_without_panicking() {
         for shape in [0.0, -1.0, f64::INFINITY, f64::NAN] {
             assert!(
-                BetaPrior::new(shape, 1.0, (None, None))
-                    .normalize()
-                    .is_err()
+                BetaPrior {
+                    alpha: shape,
+                    beta: 1.0,
+                    range: (None, None)
+                }
+                .normalize()
+                .is_err()
             );
             assert!(
-                BetaPrior::new(1.0, shape, (None, None))
-                    .normalize()
-                    .is_err()
+                BetaPrior {
+                    alpha: 1.0,
+                    beta: shape,
+                    range: (None, None)
+                }
+                .normalize()
+                .is_err()
             );
         }
         for bounds in [
@@ -267,13 +282,21 @@ mod tests {
             (Some(f64::NAN), None),
             (None, Some(f64::INFINITY)),
         ] {
-            assert!(BetaPrior::new(1.0, 1.0, bounds).normalize().is_err());
+            assert!(
+                BetaPrior {
+                    alpha: 1.0,
+                    beta: 1.0,
+                    range: bounds
+                }
+                .normalize()
+                .is_err()
+            );
         }
     }
 
     #[test]
     fn test_beta_prior_creation() {
-        let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
+        let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).unwrap().into();
         if let Prior::Beta(p) = prior {
             assert_eq!(p.alpha, 1.0);
             assert_eq!(p.beta, 1.0);
@@ -286,7 +309,7 @@ mod tests {
     #[test]
     fn test_beta_uniform_density() {
         // Beta(1, 1) is uniform on [0,1], so density = 1.0 everywhere
-        let beta = BetaPrior::new(1.0, 1.0, (None, None));
+        let beta = BetaPrior::new(1.0, 1.0, (None, None)).unwrap();
         assert_relative_eq!(beta.function(0.5).unwrap(), 1.0, epsilon = 1e-10);
         assert_relative_eq!(beta.function(0.1).unwrap(), 1.0, epsilon = 1e-10);
         assert_relative_eq!(beta.function(0.9).unwrap(), 1.0, epsilon = 1e-10);
@@ -295,7 +318,7 @@ mod tests {
     #[test]
     fn test_beta_symmetric_mode() {
         // Beta(2, 2) has mode at 0.5
-        let beta = BetaPrior::new(2.0, 2.0, (None, None));
+        let beta = BetaPrior::new(2.0, 2.0, (None, None)).unwrap();
         let at_mode = beta.function(0.5).unwrap();
         let off_mode = beta.function(0.3).unwrap();
         assert!(at_mode > off_mode);
@@ -305,20 +328,24 @@ mod tests {
     fn test_beta_density_known_value() {
         // Beta(2,5) at x=0.3: dbeta(0.3, 2, 5) ≈ 2.1609
         // R: dbeta(0.3, 2, 5) = 2.1609
-        let beta = BetaPrior::new(2.0, 5.0, (None, None));
+        let beta = BetaPrior::new(2.0, 5.0, (None, None)).unwrap();
         let density = beta.function(0.3).unwrap();
         assert_relative_eq!(density, 2.1609, epsilon = 1e-3);
     }
 
     #[test]
     fn test_beta_validation_valid() {
-        let beta = BetaPrior::new(1.0, 1.0, (None, None));
+        let beta = BetaPrior::new(1.0, 1.0, (None, None)).unwrap();
         assert!(beta.validate().is_ok());
     }
 
     #[test]
     fn test_beta_validation_negative_alpha() {
-        let beta = BetaPrior::new(-1.0, 1.0, (None, None));
+        let beta = BetaPrior {
+            alpha: -1.0,
+            beta: 1.0,
+            range: (None, None),
+        };
         assert!(matches!(
             beta.validate(),
             Err(PriorError::InvalidShapeParameter(_))
@@ -327,7 +354,11 @@ mod tests {
 
     #[test]
     fn test_beta_validation_negative_beta() {
-        let beta = BetaPrior::new(1.0, -1.0, (None, None));
+        let beta = BetaPrior {
+            alpha: 1.0,
+            beta: -1.0,
+            range: (None, None),
+        };
         assert!(matches!(
             beta.validate(),
             Err(PriorError::InvalidShapeParameter(_))
@@ -336,7 +367,11 @@ mod tests {
 
     #[test]
     fn test_beta_validation_invalid_range_bounds() {
-        let beta = BetaPrior::new(1.0, 1.0, (Some(-0.5), None));
+        let beta = BetaPrior {
+            alpha: 1.0,
+            beta: 1.0,
+            range: (Some(-0.5), None),
+        };
         assert!(matches!(
             beta.validate(),
             Err(PriorError::InvalidRangeBounds)
@@ -346,20 +381,20 @@ mod tests {
     #[test]
     fn test_beta_value_outside_0_1() {
         // function() should return InvalidValue for x outside [0, 1]
-        let beta = BetaPrior::new(1.0, 1.0, (None, None));
+        let beta = BetaPrior::new(1.0, 1.0, (None, None)).unwrap();
         assert!(beta.function(1.5).is_err());
         assert!(beta.function(-0.1).is_err());
     }
 
     #[test]
     fn test_beta_normalization() {
-        let beta = BetaPrior::new(2.0, 5.0, (None, None));
+        let beta = BetaPrior::new(2.0, 5.0, (None, None)).unwrap();
         assert_eq!(beta.normalize().unwrap(), 1.0);
     }
 
     #[test]
     fn test_beta_default_range() {
-        let beta = BetaPrior::new(1.0, 1.0, (None, None));
+        let beta = BetaPrior::new(1.0, 1.0, (None, None)).unwrap();
         assert_eq!(beta.default_range(), (0.0, 1.0));
     }
 }

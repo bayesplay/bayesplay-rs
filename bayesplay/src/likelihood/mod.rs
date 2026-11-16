@@ -22,9 +22,9 @@
 //! use bayesplay::prelude::*;
 //!
 //! // Create different types of likelihoods
-//! let normal = NormalLikelihood::new(0.5, 0.2);
-//! let binomial = BinomialLikelihood::new(7.0, 10.0);
-//! let student_t = StudentTLikelihood::new(2.5, 1.0, 29.0);
+//! let normal = NormalLikelihood::new(0.5, 0.2).unwrap();
+//! let binomial = BinomialLikelihood::new(7.0, 10.0).unwrap();
+//! let student_t = StudentTLikelihood::new(2.5, 1.0, 29.0).unwrap();
 //!
 //! // Convert to the Likelihood enum for use with models
 //! let likelihood: Likelihood = normal.into();
@@ -142,7 +142,7 @@ impl LikelihoodError {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let mut likelihood = NormalLikelihood::new(0.5, 0.2);
+/// let mut likelihood = NormalLikelihood::new(0.5, 0.2).unwrap();
 ///
 /// // Get the current observation (the mean)
 /// assert_eq!(likelihood.get_observation(), Some(0.5));
@@ -181,8 +181,8 @@ pub trait Observation {
 /// use bayesplay::prelude::*;
 ///
 /// // Create specific likelihood types
-/// let normal = NormalLikelihood::new(0.5, 0.2);
-/// let binomial = BinomialLikelihood::new(7.0, 10.0);
+/// let normal = NormalLikelihood::new(0.5, 0.2).unwrap();
+/// let binomial = BinomialLikelihood::new(7.0, 10.0).unwrap();
 ///
 /// // Convert to Likelihood enum
 /// let likelihood: Likelihood = normal.into();
@@ -195,8 +195,8 @@ pub trait Observation {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 ///
 /// // Create a model
 /// let model: Model = likelihood * prior;
@@ -209,7 +209,7 @@ pub trait Observation {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
 ///
 /// // Evaluate the likelihood at different parameter values
 /// let value = likelihood.function(0.5).unwrap();
@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn variance_likelihood_families_dispatch() {
         let cases = [(
-            Likelihood::from(VarianceRatioLikelihood::new(1.2, 9.0)),
+            Likelihood::from(VarianceRatioLikelihood::new(1.2, 9.0).unwrap()),
             LikelihoodFamily::VarianceRatio,
         )];
 

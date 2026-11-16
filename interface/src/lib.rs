@@ -119,6 +119,10 @@ pub enum InterfaceError {
     MissingLikelihoodParameter(&'static str),
     #[error("{0} is missing from prior interface")]
     MissingPriorParameter(&'static str),
+    #[error(transparent)]
+    Prior(#[from] PriorError),
+    #[error(transparent)]
+    Likelihood(#[from] LikelihoodError),
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
@@ -244,7 +248,7 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
                     .ok_or(Self::Error::MissingLikelihoodParameter("mean"))?;
                 let se = value.params[ParameterName::Se]
                     .ok_or(Self::Error::MissingLikelihoodParameter("se"))?;
-                NormalLikelihood::new(mean, se).into()
+                NormalLikelihood::new(mean, se)?.into()
             }
             LikelihoodFamily::StudentT => {
                 let mean = value.params[ParameterName::Mean]
@@ -253,14 +257,14 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
                     .ok_or(Self::Error::MissingLikelihoodParameter("sd"))?;
                 let df = value.params[ParameterName::Df]
                     .ok_or(Self::Error::MissingLikelihoodParameter("df"))?;
-                StudentTLikelihood::new(mean, sd, df).into()
+                StudentTLikelihood::new(mean, sd, df)?.into()
             }
             LikelihoodFamily::NoncentralD => {
                 let d = value.params[ParameterName::D]
                     .ok_or(Self::Error::MissingLikelihoodParameter("d"))?;
                 let n = value.params[ParameterName::N]
                     .ok_or(Self::Error::MissingLikelihoodParameter("n"))?;
-                NoncentralDLikelihood::new(d, n).into()
+                NoncentralDLikelihood::new(d, n)?.into()
             }
             LikelihoodFamily::NoncentralD2 => {
                 let d = value.params[ParameterName::D]
@@ -269,28 +273,28 @@ impl TryFrom<LikelihoodInterface> for Likelihood {
                     .ok_or(Self::Error::MissingLikelihoodParameter("n1"))?;
                 let n2 = value.params[ParameterName::N2]
                     .ok_or(Self::Error::MissingLikelihoodParameter("n2"))?;
-                NoncentralD2Likelihood::new(d, n1, n2).into()
+                NoncentralD2Likelihood::new(d, n1, n2)?.into()
             }
             LikelihoodFamily::NoncentralT => {
                 let t = value.params[ParameterName::T]
                     .ok_or(Self::Error::MissingLikelihoodParameter("t"))?;
                 let df = value.params[ParameterName::Df]
                     .ok_or(Self::Error::MissingLikelihoodParameter("df"))?;
-                NoncentralTLikelihood::new(t, df).into()
+                NoncentralTLikelihood::new(t, df)?.into()
             }
             LikelihoodFamily::Binomial => {
                 let trials: f64 = value.params[ParameterName::Trials]
                     .ok_or(Self::Error::MissingLikelihoodParameter("trials"))?;
                 let successes: f64 = value.params[ParameterName::Successes]
                     .ok_or(Self::Error::MissingLikelihoodParameter("successes"))?;
-                BinomialLikelihood::new(successes, trials).into()
+                BinomialLikelihood::new(successes, trials)?.into()
             }
             LikelihoodFamily::VarianceRatio => {
                 let u = value.params[ParameterName::U]
                     .ok_or(Self::Error::MissingLikelihoodParameter("u"))?;
                 let df = value.params[ParameterName::Df]
                     .ok_or(Self::Error::MissingLikelihoodParameter("df"))?;
-                VarianceRatioLikelihood::new(u, df).into()
+                VarianceRatioLikelihood::new(u, df)?.into()
             }
         };
         Ok(likelihood)
@@ -444,12 +448,12 @@ impl TryFrom<PriorInterface> for Prior {
                     .ok_or(InterfaceError::MissingPriorParameter("location"))?;
                 let scale = value.params[ParameterName::Scale]
                     .ok_or(InterfaceError::MissingPriorParameter("scale"))?;
-                CauchyPrior::new(location, scale, range).into()
+                CauchyPrior::new(location, scale, range)?.into()
             }
             PriorFamily::Point => {
                 let point = value.params[ParameterName::Point]
                     .ok_or(InterfaceError::MissingPriorParameter("point"))?;
-                PointPrior::new(point).into()
+                PointPrior::new(point)?.into()
             }
 
             PriorFamily::Normal => {
@@ -463,7 +467,7 @@ impl TryFrom<PriorInterface> for Prior {
 
                 let sd = value.params[ParameterName::Sd]
                     .ok_or(InterfaceError::MissingPriorParameter("sd"))?;
-                NormalPrior::new(mean, sd, range).into()
+                NormalPrior::new(mean, sd, range)?.into()
             }
             PriorFamily::StudentT => {
                 let range = (
@@ -477,14 +481,14 @@ impl TryFrom<PriorInterface> for Prior {
                     .ok_or(InterfaceError::MissingPriorParameter("sd"))?;
                 let df = value.params[ParameterName::Df]
                     .ok_or(InterfaceError::MissingPriorParameter("df"))?;
-                StudentTPrior::new(mean, sd, df, range).into()
+                StudentTPrior::new(mean, sd, df, range)?.into()
             }
             PriorFamily::Uniform => {
                 let min = value.params[ParameterName::Min]
                     .ok_or(InterfaceError::MissingPriorParameter("min"))?;
                 let max = value.params[ParameterName::Max]
                     .ok_or(InterfaceError::MissingPriorParameter("max"))?;
-                UniformPrior::new(min, max).into()
+                UniformPrior::new(min, max)?.into()
             }
             PriorFamily::Beta => {
                 let range = (
@@ -495,7 +499,7 @@ impl TryFrom<PriorInterface> for Prior {
                     .ok_or(InterfaceError::MissingPriorParameter("alpha"))?;
                 let beta = value.params[ParameterName::Beta]
                     .ok_or(InterfaceError::MissingPriorParameter("beta"))?;
-                BetaPrior::new(alpha, beta, range).into()
+                BetaPrior::new(alpha, beta, range)?.into()
             }
             PriorFamily::BetaPrime => {
                 let range = (
@@ -504,7 +508,7 @@ impl TryFrom<PriorInterface> for Prior {
                 );
                 let alpha = value.params[ParameterName::Alpha]
                     .ok_or(InterfaceError::MissingPriorParameter("alpha"))?;
-                BetaPrimePrior::new(alpha, range).into()
+                BetaPrimePrior::new(alpha, range)?.into()
             }
         };
 
@@ -523,7 +527,7 @@ mod tests {
         );
         assert_eq!(prior.function(0.25).unwrap(), 0.0);
         assert!((prior.function(0.75).unwrap() - 2.0).abs() < 1e-12);
-        let likelihood: Likelihood = BinomialLikelihood::new(1.0, 1.0).into();
+        let likelihood: Likelihood = BinomialLikelihood::new(1.0, 1.0).unwrap().into();
         assert!(((likelihood * prior).integral().unwrap().value - 7.0 / 9.0).abs() < 1e-12);
     }
 
@@ -601,6 +605,30 @@ mod tests {
         assert!(serde_json::from_str::<ParameterName>(r#""nope""#).is_err());
         assert!(serde_json::from_str::<LikelihoodFamily>(r#""nope""#).is_err());
         assert!(serde_json::from_str::<PriorFamily>(r#""nope""#).is_err());
+    }
+
+    #[test]
+    fn invalid_parameters_are_reported_by_the_interface() {
+        let prior: PriorInterface = serde_json::from_str(
+            r#"{"family":"normal","params":[{"name":"mean","value":0},{"name":"sd","value":-1}]}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            Prior::try_from(prior),
+            Err(InterfaceError::Prior(PriorError::InvalidStandardDeviation(
+                _
+            )))
+        ));
+        let likelihood: LikelihoodInterface = serde_json::from_str(
+            r#"{"family":"binomial","params":[{"name":"trials","value":10},{"name":"successes","value":11}]}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            Likelihood::try_from(likelihood),
+            Err(InterfaceError::Likelihood(LikelihoodError::InvalidSuccess(
+                _
+            )))
+        ));
     }
 
     fn prior_from_json(json: &str) -> Prior {

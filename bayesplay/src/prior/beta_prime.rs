@@ -17,8 +17,10 @@ pub struct BetaPrimePrior {
 }
 
 impl BetaPrimePrior {
-    pub fn new(alpha: f64, range: (Option<f64>, Option<f64>)) -> Self {
-        Self { alpha, range }
+    pub fn new(alpha: f64, range: (Option<f64>, Option<f64>)) -> Result<Self, PriorError> {
+        let value = Self { alpha, range };
+        value.validate()?;
+        Ok(value)
     }
 
     fn cdf(&self, q: f64, lower_tail: bool) -> Result<f64, PriorError> {
@@ -139,7 +141,7 @@ mod tests {
 
     #[test]
     fn known_densities_and_dispatch() {
-        let prior = BetaPrimePrior::new(0.5, (None, None));
+        let prior = BetaPrimePrior::new(0.5, (None, None)).unwrap();
         assert_relative_eq!(
             prior.function(1.0).unwrap(),
             1.0 / (2.0 * std::f64::consts::PI),
@@ -161,7 +163,7 @@ mod tests {
 
     #[test]
     fn reciprocal_symmetry_and_support() {
-        let prior = BetaPrimePrior::new(2.16, (None, None));
+        let prior = BetaPrimePrior::new(2.16, (None, None)).unwrap();
         for x in [0.4, 0.75, 1.5, 3.0] {
             assert_relative_eq!(
                 prior.function(x).unwrap(),
@@ -176,13 +178,13 @@ mod tests {
 
     #[test]
     fn representable_upper_tail_density_and_mass_do_not_underflow() {
-        let prior = BetaPrimePrior::new(0.5, (Some(1e20), Some(4e20)));
+        let prior = BetaPrimePrior::new(0.5, (Some(1e20), Some(4e20))).unwrap();
         assert_relative_eq!(
             prior.normalize().unwrap(),
             3.183_098_861_837_907e-11,
             max_relative = 1e-12
         );
-        let full = BetaPrimePrior::new(0.5, (None, None));
+        let full = BetaPrimePrior::new(0.5, (None, None)).unwrap();
         assert_relative_eq!(
             full.function(1e200).unwrap(),
             3.183_098_861_837_907e-301,
@@ -192,9 +194,9 @@ mod tests {
 
     #[test]
     fn truncation_uses_exact_beta_mass() {
-        let full = BetaPrimePrior::new(0.5, (None, None));
-        let upper = BetaPrimePrior::new(0.5, (Some(1.0), None));
-        let lower = BetaPrimePrior::new(0.5, (Some(0.0), Some(1.0)));
+        let full = BetaPrimePrior::new(0.5, (None, None)).unwrap();
+        let upper = BetaPrimePrior::new(0.5, (Some(1.0), None)).unwrap();
+        let lower = BetaPrimePrior::new(0.5, (Some(0.0), Some(1.0))).unwrap();
         assert_eq!(full.normalize().unwrap(), 1.0);
         assert_relative_eq!(upper.normalize().unwrap(), 0.5, epsilon = 1e-15);
         assert_relative_eq!(lower.normalize().unwrap(), 0.5, epsilon = 1e-15);
@@ -209,15 +211,27 @@ mod tests {
     #[test]
     fn rejects_invalid_parameters() {
         assert!(matches!(
-            BetaPrimePrior::new(0.0, (None, None)).validate(),
+            BetaPrimePrior {
+                alpha: 0.0,
+                range: (None, None)
+            }
+            .validate(),
             Err(PriorError::InvalidShapeParameter(_))
         ));
         assert!(matches!(
-            BetaPrimePrior::new(0.5, (Some(-1.0), Some(1.0))).validate(),
+            BetaPrimePrior {
+                alpha: 0.5,
+                range: (Some(-1.0), Some(1.0))
+            }
+            .validate(),
             Err(PriorError::InvalidPositiveRangeBounds)
         ));
         assert!(matches!(
-            BetaPrimePrior::new(0.5, (Some(2.0), Some(1.0))).validate(),
+            BetaPrimePrior {
+                alpha: 0.5,
+                range: (Some(2.0), Some(1.0))
+            }
+            .validate(),
             Err(PriorError::InvalidRange)
         ));
     }

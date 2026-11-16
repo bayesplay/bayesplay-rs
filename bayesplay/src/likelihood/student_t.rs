@@ -30,7 +30,7 @@ use crate::common::Validate;
 /// use bayesplay::prelude::*;
 ///
 /// // t-distributed data with mean 2.5, sd 1.0, and 29 degrees of freedom
-/// let likelihood = StudentTLikelihood::new(2.5, 1.0, 29.0);
+/// let likelihood = StudentTLikelihood::new(2.5, 1.0, 29.0).unwrap();
 ///
 /// // Validate parameters
 /// assert!(likelihood.validate().is_ok());
@@ -59,14 +59,16 @@ impl StudentTLikelihood {
     /// let mean = 0.0;
     /// let sd = 1.0;
     /// let df = 10.0;
-    /// let likelihood = StudentTLikelihood::new(mean, sd, df);
+    /// let likelihood = StudentTLikelihood::new(mean, sd, df).unwrap();
     ///
     /// assert_eq!(likelihood.mean, mean);
     /// assert_eq!(likelihood.sd, sd);
     /// assert_eq!(likelihood.df, df);
     /// ```
-    pub fn new(mean: f64, sd: f64, df: f64) -> Self {
-        StudentTLikelihood { mean, sd, df }
+    pub fn new(mean: f64, sd: f64, df: f64) -> Result<Self, LikelihoodError> {
+        let value = StudentTLikelihood { mean, sd, df };
+        value.validate()?;
+        Ok(value)
     }
 }
 

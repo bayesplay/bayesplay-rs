@@ -32,10 +32,10 @@ use super::validate_range;
 /// use bayesplay::prelude::*;
 ///
 /// // Uniform prior from 0 to 1 (useful for probability parameters)
-/// let unit_uniform = UniformPrior::new(0.0, 1.0);
+/// let unit_uniform = UniformPrior::new(0.0, 1.0).unwrap();
 ///
 /// // Uniform prior from -1 to 1
-/// let symmetric = UniformPrior::new(-1.0, 1.0);
+/// let symmetric = UniformPrior::new(-1.0, 1.0).unwrap();
 ///
 /// // The density is constant within the interval
 /// let density = symmetric.function(0.0).unwrap();
@@ -65,12 +65,14 @@ impl UniformPrior {
     /// ```rust
     /// use bayesplay::prelude::*;
     ///
-    /// let uniform = UniformPrior::new(0.0, 1.0);
+    /// let uniform = UniformPrior::new(0.0, 1.0).unwrap();
     /// assert_eq!(uniform.min, 0.0);
     /// assert_eq!(uniform.max, 1.0);
     /// ```
-    pub fn new(min: f64, max: f64) -> Self {
-        UniformPrior { min, max }
+    pub fn new(min: f64, max: f64) -> Result<Self, PriorError> {
+        let value = UniformPrior { min, max };
+        value.validate()?;
+        Ok(value)
     }
 }
 
@@ -94,7 +96,7 @@ impl Range for UniformPrior {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let uniform = UniformPrior::new(0.0, 2.0);
+/// let uniform = UniformPrior::new(0.0, 2.0).unwrap();
 ///
 /// // Inside the interval: density = 1/(2-0) = 0.5
 /// assert!((uniform.function(1.0).unwrap() - 0.5).abs() < 1e-10);
@@ -118,16 +120,14 @@ impl PriorDensity for UniformPrior {
 /// use bayesplay::prelude::*;
 ///
 /// // Valid: min < max
-/// let valid = UniformPrior::new(0.0, 1.0);
+/// let valid = UniformPrior::new(0.0, 1.0).unwrap();
 /// assert!(valid.validate().is_ok());
 ///
 /// // Invalid: min == max
-/// let invalid = UniformPrior::new(1.0, 1.0);
-/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidRange)));
+/// assert!(matches!(UniformPrior::new(1.0, 1.0), Err(PriorError::InvalidRange)));
 ///
 /// // Invalid: min > max
-/// let invalid = UniformPrior::new(2.0, 1.0);
-/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidRange)));
+/// assert!(matches!(UniformPrior::new(2.0, 1.0), Err(PriorError::InvalidRange)));
 /// ```
 impl Validate<PriorError> for UniformPrior {
     fn validate(&self) -> Result<(), PriorError> {
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn test_uniform_prior_creation() {
-        let prior: Prior = UniformPrior::new(0.0, 1.0).into();
+        let prior: Prior = UniformPrior::new(0.0, 1.0).unwrap().into();
         if let Prior::Uniform(p) = prior {
             assert_eq!(p.min, 0.0);
             assert_eq!(p.max, 1.0);
@@ -167,13 +167,13 @@ mod tests {
     #[test]
     fn test_uniform_density_inside() {
         // Uniform(0, 1): density = 1/(1-0) = 1.0 everywhere inside
-        let uniform = UniformPrior::new(0.0, 1.0);
+        let uniform = UniformPrior::new(0.0, 1.0).unwrap();
         assert_relative_eq!(uniform.function(0.5).unwrap(), 1.0, epsilon = 1e-10);
     }
 
     #[test]
     fn test_uniform_density_outside() {
-        let uniform = UniformPrior::new(0.0, 1.0);
+        let uniform = UniformPrior::new(0.0, 1.0).unwrap();
         assert_eq!(uniform.function(2.0).unwrap(), 0.0);
         assert_eq!(uniform.function(-1.0).unwrap(), 0.0);
     }
@@ -181,13 +181,13 @@ mod tests {
     #[test]
     fn test_uniform_density_wider_interval() {
         // Uniform(-1, 1): density = 1/(1-(-1)) = 0.5
-        let uniform = UniformPrior::new(-1.0, 1.0);
+        let uniform = UniformPrior::new(-1.0, 1.0).unwrap();
         assert_relative_eq!(uniform.function(0.0).unwrap(), 0.5, epsilon = 1e-10);
     }
 
     #[test]
     fn test_uniform_density_at_boundaries() {
-        let uniform = UniformPrior::new(0.0, 2.0);
+        let uniform = UniformPrior::new(0.0, 2.0).unwrap();
         // dunif at the boundaries should equal the density
         assert_relative_eq!(uniform.function(0.0).unwrap(), 0.5, epsilon = 1e-10);
         assert_relative_eq!(uniform.function(2.0).unwrap(), 0.5, epsilon = 1e-10);
@@ -195,31 +195,31 @@ mod tests {
 
     #[test]
     fn test_uniform_validation_valid() {
-        let uniform = UniformPrior::new(0.0, 1.0);
+        let uniform = UniformPrior::new(0.0, 1.0).unwrap();
         assert!(uniform.validate().is_ok());
     }
 
     #[test]
     fn test_uniform_validation_equal_bounds() {
-        let uniform = UniformPrior::new(1.0, 1.0);
+        let uniform = UniformPrior { min: 1.0, max: 1.0 };
         assert!(matches!(uniform.validate(), Err(PriorError::InvalidRange)));
     }
 
     #[test]
     fn test_uniform_validation_reversed_bounds() {
-        let uniform = UniformPrior::new(2.0, 1.0);
+        let uniform = UniformPrior { min: 2.0, max: 1.0 };
         assert!(matches!(uniform.validate(), Err(PriorError::InvalidRange)));
     }
 
     #[test]
     fn test_uniform_normalization() {
-        let uniform = UniformPrior::new(0.0, 10.0);
+        let uniform = UniformPrior::new(0.0, 10.0).unwrap();
         assert_eq!(uniform.normalize().unwrap(), 1.0);
     }
 
     #[test]
     fn test_uniform_range() {
-        let uniform = UniformPrior::new(0.0, 20.0);
+        let uniform = UniformPrior::new(0.0, 20.0).unwrap();
         assert_eq!(uniform.range(), (Some(0.0), Some(20.0)));
         assert!(!uniform.has_default_range());
     }

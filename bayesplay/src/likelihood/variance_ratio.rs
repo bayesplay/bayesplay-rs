@@ -16,8 +16,10 @@ pub struct VarianceRatioLikelihood {
 }
 
 impl VarianceRatioLikelihood {
-    pub fn new(u: f64, df: f64) -> Self {
-        Self { u, df }
+    pub fn new(u: f64, df: f64) -> Result<Self, LikelihoodError> {
+        let value = Self { u, df };
+        value.validate()?;
+        Ok(value)
     }
 }
 
@@ -81,7 +83,7 @@ mod tests {
 
     #[test]
     fn matches_r_reference_values() {
-        let likelihood = VarianceRatioLikelihood::new(1.6, 9.0);
+        let likelihood = VarianceRatioLikelihood::new(1.6, 9.0).unwrap();
         let r = [0.25, 0.64, 1.0, 1.69, 4.0, 9.61];
         let expected = [
             6.163_407_474_191_212e-8,
@@ -103,7 +105,7 @@ mod tests {
 
     #[test]
     fn is_zero_outside_positive_finite_support() {
-        let likelihood = VarianceRatioLikelihood::new(1.6, 9.0);
+        let likelihood = VarianceRatioLikelihood::new(1.6, 9.0).unwrap();
         for x in [-1.0, 0.0, f64::NEG_INFINITY, f64::INFINITY, f64::NAN] {
             assert_eq!(likelihood.function(x).unwrap(), 0.0);
         }
@@ -111,7 +113,7 @@ mod tests {
 
     #[test]
     fn combines_tail_terms_before_exponentiating() {
-        let likelihood = VarianceRatioLikelihood::new(1.0, 1.0);
+        let likelihood = VarianceRatioLikelihood::new(1.0, 1.0).unwrap();
         assert_relative_eq!(
             likelihood.function(1e200).unwrap(),
             3.989_422_804_014_327e-101,
@@ -121,7 +123,7 @@ mod tests {
 
     #[test]
     fn peaks_at_observed_variance_ratio() {
-        let likelihood = VarianceRatioLikelihood::new(1.6, 9.0);
+        let likelihood = VarianceRatioLikelihood::new(1.6, 9.0).unwrap();
         let mode = 1.6;
         let at_mode = likelihood.function(mode).unwrap();
         assert!(at_mode > likelihood.function(mode * 0.99).unwrap());
@@ -132,19 +134,19 @@ mod tests {
     #[test]
     fn validates_parameters_and_round_trips_observation() {
         assert!(matches!(
-            VarianceRatioLikelihood::new(0.0, 9.0).validate(),
+            VarianceRatioLikelihood { u: 0.0, df: 9.0 }.validate(),
             Err(LikelihoodError::InvalidU(0.0))
         ));
         assert!(matches!(
-            VarianceRatioLikelihood::new(1.0, 0.0).validate(),
+            VarianceRatioLikelihood { u: 1.0, df: 0.0 }.validate(),
             Err(LikelihoodError::InvalidDF(0.0))
         ));
         assert!(matches!(
-            VarianceRatioLikelihood::new(-1.0, -1.0).validate(),
+            VarianceRatioLikelihood { u: -1.0, df: -1.0 }.validate(),
             Err(LikelihoodError::MultipleErrors(_))
         ));
 
-        let mut likelihood = VarianceRatioLikelihood::new(1.0, 9.0);
+        let mut likelihood = VarianceRatioLikelihood::new(1.0, 9.0).unwrap();
         likelihood.update_observation(1.4);
         assert_relative_eq!(likelihood.u, 1.4);
         assert_relative_eq!(likelihood.get_observation().unwrap(), 1.4);

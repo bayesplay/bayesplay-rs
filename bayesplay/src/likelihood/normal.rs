@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 /// use bayesplay::prelude::*;
 ///
 /// // Create a normal likelihood with mean 0.0 and standard error 1.0
-/// let likelihood = NormalLikelihood::new(0.0, 1.0);
+/// let likelihood = NormalLikelihood::new(0.0, 1.0).unwrap();
 ///
 /// // Access the parameters directly
 /// assert_eq!(likelihood.mean, 0.0);
@@ -39,18 +39,20 @@ use crate::likelihood::Observation;
 /// use bayesplay::prelude::*;
 ///
 /// // Create a normal likelihood with mean 0.5 and standard error 0.2
-/// let likelihood = NormalLikelihood::new(0.5, 0.2);
+/// let likelihood = NormalLikelihood::new(0.5, 0.2).unwrap();
 ///
 /// // Access the parameters directly
 /// assert_eq!(likelihood.mean, 0.5);
 /// assert_eq!(likelihood.se, 0.2);
 ///
 /// // Create a likelihood for different experimental results
-/// let new_result = NormalLikelihood::new(1.2, 0.3);
+/// let new_result = NormalLikelihood::new(1.2, 0.3).unwrap();
 /// ```
 impl NormalLikelihood {
-    pub fn new(mean: f64, se: f64) -> Self {
-        NormalLikelihood { mean, se }
+    pub fn new(mean: f64, se: f64) -> Result<Self, LikelihoodError> {
+        let value = NormalLikelihood { mean, se };
+        value.validate()?;
+        Ok(value)
     }
 }
 
@@ -64,7 +66,7 @@ impl NormalLikelihood {
 /// use bayesplay::prelude::*;
 ///
 /// // Create a normal likelihood with mean 0.0 and standard error 1.0
-/// let mut likelihood = NormalLikelihood::new(0.0, 1.0);
+/// let mut likelihood = NormalLikelihood::new(0.0, 1.0).unwrap();
 ///
 /// // The observation is the mean value
 /// assert_eq!(likelihood.get_observation(), Some(0.0));
@@ -101,7 +103,7 @@ impl Observation for NormalLikelihood {
 /// use std::f64::consts::PI;
 ///
 /// // Create a normal likelihood with mean 0.0 and standard error 1.0
-/// let likelihood = NormalLikelihood::new(0.0, 1.0);
+/// let likelihood = NormalLikelihood::new(0.0, 1.0).unwrap();
 ///
 /// // When x equals the mean, the value should be at maximum (1/√(2πσ²))
 /// let max_value = likelihood.function(0.0).unwrap();
@@ -138,7 +140,7 @@ impl LogFunction<LikelihoodError> for NormalLikelihood {
 /// use bayesplay::prelude::*;
 ///
 /// // Create a normal likelihood with valid parameters
-/// let valid_likelihood = NormalLikelihood::new(0.0, 1.0);
+/// let valid_likelihood = NormalLikelihood::new(0.0, 1.0).unwrap();
 ///
 /// // Validation should pass
 /// assert!(valid_likelihood.validate().is_ok());

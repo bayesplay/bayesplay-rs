@@ -31,13 +31,13 @@ use crate::likelihood::Observation;
 /// use bayesplay::prelude::*;
 ///
 /// // 7 successes out of 10 trials
-/// let likelihood = BinomialLikelihood::new(7.0, 10.0);
+/// let likelihood = BinomialLikelihood::new(7.0, 10.0).unwrap();
 ///
 /// // Evaluate the likelihood at p = 0.5
 /// let value = likelihood.function(0.5).unwrap();
 ///
 /// // Combine with a Beta prior (conjugate for binomial)
-/// let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
+/// let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).unwrap().into();
 /// let model: Model = Likelihood::from(likelihood) * prior;
 /// ```
 #[derive(Default, Clone, Copy, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
@@ -58,7 +58,7 @@ impl BinomialLikelihood {
     ///
     /// let successes = 5.0;
     /// let trials = 10.0;
-    /// let likelihood = BinomialLikelihood::new(successes, trials);
+    /// let likelihood = BinomialLikelihood::new(successes, trials).unwrap();
     ///
     /// let likelihood: Likelihood = likelihood.into();
     /// match likelihood {
@@ -69,8 +69,10 @@ impl BinomialLikelihood {
     ///     _ => panic!("Expected a Binomial likelihood"),
     /// }
     /// ```
-    pub fn new(successes: f64, trials: f64) -> Self {
-        BinomialLikelihood { successes, trials }
+    pub fn new(successes: f64, trials: f64) -> Result<Self, LikelihoodError> {
+        let value = BinomialLikelihood { successes, trials };
+        value.validate()?;
+        Ok(value)
     }
 }
 

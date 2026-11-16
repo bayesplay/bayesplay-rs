@@ -20,10 +20,10 @@
 //! use bayesplay::prelude::*;
 //!
 //! // Create a likelihood from observed data (mean = 0.5, standard error = 0.2)
-//! let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+//! let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
 //!
 //! // Create a prior distribution (normal with mean = 0, sd = 1)
-//! let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+//! let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 //!
 //! // Combine into a model using multiplication
 //! let model: Model = likelihood * prior;
@@ -65,10 +65,10 @@
 //! use bayesplay::prelude::*;
 //!
 //! // Normal prior truncated to positive values only
-//! let positive_normal = NormalPrior::new(0.0, 1.0, (Some(0.0), None));
+//! let positive_normal = NormalPrior::new(0.0, 1.0, (Some(0.0), None)).unwrap();
 //!
 //! // Cauchy prior truncated between -2 and 2
-//! let bounded_cauchy = CauchyPrior::new(0.0, 0.707, (Some(-2.0), Some(2.0)));
+//! let bounded_cauchy = CauchyPrior::new(0.0, 0.707, (Some(-2.0), Some(2.0))).unwrap();
 //! ```
 //!
 //! ## Computing Bayes Factors
@@ -78,14 +78,14 @@
 //! ```rust
 //! use bayesplay::prelude::*;
 //!
-//! let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+//! let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
 //!
 //! // Alternative hypothesis: effect exists
-//! let h1_prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+//! let h1_prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 //! let h1_model: Model = likelihood * h1_prior;
 //!
 //! // Null hypothesis: effect is exactly zero
-//! let h0_prior: Prior = PointPrior::new(0.0).into();
+//! let h0_prior: Prior = PointPrior::new(0.0).unwrap().into();
 //! let h0_model: Model = likelihood * h0_prior;
 //!
 //! // Bayes factor = marginal likelihood of H1 / marginal likelihood of H0

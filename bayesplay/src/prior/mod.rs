@@ -25,13 +25,13 @@
 //! use bayesplay::prelude::*;
 //!
 //! // Normal prior truncated to positive values
-//! let positive_normal = NormalPrior::new(0.0, 1.0, (Some(0.0), None));
+//! let positive_normal = NormalPrior::new(0.0, 1.0, (Some(0.0), None)).unwrap();
 //!
 //! // Cauchy prior truncated between -2 and 2
-//! let bounded_cauchy = CauchyPrior::new(0.0, 0.707, (Some(-2.0), Some(2.0)));
+//! let bounded_cauchy = CauchyPrior::new(0.0, 0.707, (Some(-2.0), Some(2.0))).unwrap();
 //!
 //! // Student's t prior with lower bound only
-//! let lower_bounded_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), None));
+//! let lower_bounded_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), None)).unwrap();
 //! ```
 //!
 //! # Examples
@@ -40,15 +40,15 @@
 //! use bayesplay::prelude::*;
 //!
 //! // Create different types of priors
-//! let normal = NormalPrior::new(0.0, 1.0, (None, None));
-//! let cauchy = CauchyPrior::new(0.0, 0.707, (None, None));
-//! let point = PointPrior::new(0.0);
+//! let normal = NormalPrior::new(0.0, 1.0, (None, None)).unwrap();
+//! let cauchy = CauchyPrior::new(0.0, 0.707, (None, None)).unwrap();
+//! let point = PointPrior::new(0.0).unwrap();
 //!
 //! // Convert to the Prior enum for use with models
 //! let prior: Prior = normal.into();
 //!
 //! // Combine with a likelihood
-//! let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+//! let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
 //! let model: Model = likelihood * prior;
 //! ```
 
@@ -93,16 +93,15 @@ use serde::{Deserialize, Serialize};
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// // Invalid standard deviation
-/// let invalid = NormalPrior::new(0.0, -1.0, (None, None));
-/// match invalid.validate() {
+/// // Constructors reject invalid parameters
+/// match NormalPrior::new(0.0, -1.0, (None, None)) {
 ///     Err(PriorError::InvalidStandardDeviation(sd)) => assert_eq!(sd, -1.0),
 ///     _ => panic!("Expected InvalidStandardDeviation error"),
 /// }
 ///
 /// // Invalid range (equal bounds)
 /// let invalid = NormalPrior::new(0.0, 1.0, (Some(0.0), Some(0.0)));
-/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidRange)));
+/// assert!(matches!(invalid, Err(PriorError::InvalidRange)));
 /// ```
 #[derive(Error, Debug, Serialize, Deserialize, Clone)]
 pub enum PriorError {
@@ -186,10 +185,10 @@ pub(crate) fn validate_positive_range(range: (Option<f64>, Option<f64>)) -> Resu
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 /// assert_eq!(prior.family(), PriorFamily::Normal);
 ///
-/// let prior: Prior = PointPrior::new(0.0).into();
+/// let prior: Prior = PointPrior::new(0.0).unwrap().into();
 /// assert_eq!(prior.family(), PriorFamily::Point);
 /// assert!(prior.is_point());
 /// ```
@@ -223,11 +222,11 @@ pub enum PriorFamily {
 /// use bayesplay::prelude::*;
 ///
 /// // Unbounded normal: normalization constant is 1
-/// let unbounded = NormalPrior::new(0.0, 1.0, (None, None));
+/// let unbounded = NormalPrior::new(0.0, 1.0, (None, None)).unwrap();
 /// assert_eq!(unbounded.normalize().unwrap(), 1.0);
 ///
 /// // Truncated normal: normalization constant is the probability mass in bounds
-/// let truncated = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0)));
+/// let truncated = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0))).unwrap();
 /// let norm = truncated.normalize().unwrap();
 /// assert!((norm - 0.6827).abs() < 0.01); // ~68% of mass is within ±1 SD
 /// ```
@@ -259,9 +258,9 @@ pub trait Normalize {
 /// use bayesplay::prelude::*;
 ///
 /// // Create specific prior types
-/// let normal = NormalPrior::new(0.0, 1.0, (None, None));
-/// let cauchy = CauchyPrior::new(0.0, 0.707, (None, None));
-/// let point = PointPrior::new(0.0);
+/// let normal = NormalPrior::new(0.0, 1.0, (None, None)).unwrap();
+/// let cauchy = CauchyPrior::new(0.0, 0.707, (None, None)).unwrap();
+/// let point = PointPrior::new(0.0).unwrap();
 ///
 /// // Convert to Prior enum
 /// let prior: Prior = normal.into();
@@ -274,8 +273,8 @@ pub trait Normalize {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
-/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).unwrap().into();
 ///
 /// // Create a model (order doesn't matter)
 /// let model: Model = prior * likelihood;
@@ -289,7 +288,7 @@ pub trait Normalize {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
 ///
 /// // Evaluate the prior at different parameter values
 /// let density = prior.function(0.0).unwrap();
@@ -303,7 +302,7 @@ pub trait Normalize {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let prior: Prior = PointPrior::new(0.0).into();
+/// let prior: Prior = PointPrior::new(0.0).unwrap().into();
 /// assert!(prior.is_point());
 /// assert_eq!(prior.family(), PriorFamily::Point);
 /// ```
@@ -412,7 +411,7 @@ impl Family<PriorFamily> for Prior {
     /// ```rust
     /// use bayesplay::prelude::*;
     ///
-    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).unwrap().into();
     /// assert_eq!(prior.family(), PriorFamily::Normal);
     /// ```
     fn family(&self) -> PriorFamily {
@@ -435,8 +434,8 @@ impl Prior {
     /// ```rust
     /// use bayesplay::prelude::*;
     ///
-    /// assert!(Prior::from(PointPrior::new(0.0)).is_point());
-    /// assert!(!Prior::from(NormalPrior::new(0.0, 1.0, (None, None))).is_point());
+    /// assert!(Prior::from(PointPrior::new(0.0).unwrap()).is_point());
+    /// assert!(!Prior::from(NormalPrior::new(0.0, 1.0, (None, None)).unwrap()).is_point());
     /// ```
     pub fn is_point(&self) -> bool {
         matches!(self, Prior::Point(_))
@@ -499,8 +498,8 @@ mod positive_scale_prior_tests {
     #[test]
     fn full_and_truncated_positive_priors_integrate_to_one() {
         let priors: [Prior; 2] = [
-            BetaPrimePrior::new(0.5, (None, None)).into(),
-            BetaPrimePrior::new(0.5, (Some(1.0), None)).into(),
+            BetaPrimePrior::new(0.5, (None, None)).unwrap().into(),
+            BetaPrimePrior::new(0.5, (Some(1.0), None)).unwrap().into(),
         ];
 
         for prior in priors {

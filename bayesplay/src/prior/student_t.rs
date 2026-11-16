@@ -34,13 +34,13 @@ use crate::common::truncated_ln_normalization;
 /// use bayesplay::prelude::*;
 ///
 /// // Standard t-prior with 3 degrees of freedom
-/// let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None));
+/// let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).unwrap();
 ///
 /// // t-prior with heavier tails (lower df)
-/// let heavy_tails = StudentTPrior::new(0.0, 1.0, 2.0, (None, None));
+/// let heavy_tails = StudentTPrior::new(0.0, 1.0, 2.0, (None, None)).unwrap();
 ///
 /// // Truncated t-prior (positive values only)
-/// let positive_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), None));
+/// let positive_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), None)).unwrap();
 /// ```
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub struct StudentTPrior {
@@ -70,18 +70,25 @@ impl StudentTPrior {
     /// use bayesplay::prelude::*;
     ///
     /// // Unbounded t-prior
-    /// let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None));
+    /// let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).unwrap();
     ///
     /// // Half-t prior (positive values)
-    /// let half_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), None));
+    /// let half_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), None)).unwrap();
     /// ```
-    pub fn new(mean: f64, sd: f64, df: f64, range: (Option<f64>, Option<f64>)) -> Self {
-        StudentTPrior {
+    pub fn new(
+        mean: f64,
+        sd: f64,
+        df: f64,
+        range: (Option<f64>, Option<f64>),
+    ) -> Result<Self, PriorError> {
+        let value = StudentTPrior {
             mean,
             sd,
             df,
             range,
-        }
+        };
+        value.validate()?;
+        Ok(value)
     }
 }
 
@@ -98,20 +105,17 @@ impl StudentTPrior {
 /// use bayesplay::prelude::*;
 ///
 /// // Valid parameters
-/// let valid = StudentTPrior::new(0.0, 1.0, 3.0, (None, None));
+/// let valid = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).unwrap();
 /// assert!(valid.validate().is_ok());
 ///
 /// // Invalid: sd <= 0
-/// let invalid = StudentTPrior::new(0.0, -1.0, 3.0, (None, None));
-/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidStandardDeviation(_))));
+/// assert!(matches!(StudentTPrior::new(0.0, -1.0, 3.0, (None, None)), Err(PriorError::InvalidStandardDeviation(_))));
 ///
 /// // Invalid: df <= 1
-/// let invalid = StudentTPrior::new(0.0, 1.0, 0.5, (None, None));
-/// assert!(matches!(invalid.validate(), Err(PriorError::InvalidDegreesOfFreedom(_))));
+/// assert!(matches!(StudentTPrior::new(0.0, 1.0, 0.5, (None, None)), Err(PriorError::InvalidDegreesOfFreedom(_))));
 ///
 /// // Multiple errors
-/// let invalid = StudentTPrior::new(0.0, -1.0, 0.5, (None, None));
-/// assert!(matches!(invalid.validate(), Err(PriorError::MultipleErrors(_))));
+/// assert!(matches!(StudentTPrior::new(0.0, -1.0, 0.5, (None, None)), Err(PriorError::MultipleErrors(_))));
 /// ```
 impl Validate<PriorError> for StudentTPrior {
     fn validate(&self) -> Result<(), PriorError> {
@@ -147,13 +151,13 @@ impl Validate<PriorError> for StudentTPrior {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None));
+/// let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).unwrap();
 ///
 /// // Evaluate at the mean
 /// let density_at_mean = t_prior.function(0.0).unwrap();
 ///
 /// // Truncated t: value outside bounds returns 0
-/// let truncated = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), Some(1.0)));
+/// let truncated = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), Some(1.0))).unwrap();
 /// assert_eq!(truncated.function(5.0).unwrap(), 0.0);
 /// ```
 impl PriorDensity for StudentTPrior {
@@ -179,11 +183,11 @@ impl PriorDensity for StudentTPrior {
 /// use bayesplay::prelude::*;
 ///
 /// // Unbounded t has normalization constant of 1
-/// let unbounded = StudentTPrior::new(0.0, 1.0, 3.0, (None, None));
+/// let unbounded = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).unwrap();
 /// assert_eq!(unbounded.normalize().unwrap(), 1.0);
 ///
 /// // Half-t (positive values) has normalization constant of 0.5
-/// let half_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), None));
+/// let half_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), None)).unwrap();
 /// assert!((half_t.normalize().unwrap() - 0.5).abs() < 0.001);
 /// ```
 impl Normalize for StudentTPrior {
@@ -229,8 +233,8 @@ mod tests {
         // R: prior("student_t", 0, 1, 10, c(0, Inf)) at 0 == dt(0, 10) * 2
         // For a scaled t with mean=0, sd=1, dt_scaled(0, 0, 1, 10) = dt(0, 10)
         // The half-t at 0 should be twice the untruncated value
-        let full_t = StudentTPrior::new(0.0, 1.0, 10.0, (None, None));
-        let half_t = StudentTPrior::new(0.0, 1.0, 10.0, (Some(0.0), None));
+        let full_t = StudentTPrior::new(0.0, 1.0, 10.0, (None, None)).unwrap();
+        let half_t = StudentTPrior::new(0.0, 1.0, 10.0, (Some(0.0), None)).unwrap();
 
         let full_density = full_t.function(0.0).unwrap();
         let half_density = half_t.function(0.0).unwrap();
@@ -242,7 +246,7 @@ mod tests {
     #[test]
     fn test_half_t_density_outside_range() {
         // R: prior("student_t", 0, 1, 10, c(0, Inf)) at -1 == 0
-        let half_t = StudentTPrior::new(0.0, 1.0, 10.0, (Some(0.0), None));
+        let half_t = StudentTPrior::new(0.0, 1.0, 10.0, (Some(0.0), None)).unwrap();
         let density = half_t.function(-1.0).unwrap();
         assert_eq!(density, 0.0);
     }
@@ -251,7 +255,9 @@ mod tests {
 
     #[test]
     fn test_student_t_prior_creation() {
-        let prior: Prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).into();
+        let prior: Prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None))
+            .unwrap()
+            .into();
         if let Prior::StudentT(p) = prior {
             assert_eq!(p.mean, 0.0);
             assert_eq!(p.sd, 1.0);
@@ -264,13 +270,18 @@ mod tests {
 
     #[test]
     fn test_student_t_validation_valid() {
-        let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None));
+        let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).unwrap();
         assert!(t_prior.validate().is_ok());
     }
 
     #[test]
     fn test_student_t_validation_negative_sd() {
-        let t_prior = StudentTPrior::new(0.0, -1.0, 3.0, (None, None));
+        let t_prior = StudentTPrior {
+            mean: 0.0,
+            sd: -1.0,
+            df: 3.0,
+            range: (None, None),
+        };
         assert!(matches!(
             t_prior.validate(),
             Err(PriorError::InvalidStandardDeviation(_))
@@ -279,7 +290,12 @@ mod tests {
 
     #[test]
     fn test_student_t_validation_zero_sd() {
-        let t_prior = StudentTPrior::new(0.0, 0.0, 3.0, (None, None));
+        let t_prior = StudentTPrior {
+            mean: 0.0,
+            sd: 0.0,
+            df: 3.0,
+            range: (None, None),
+        };
         assert!(matches!(
             t_prior.validate(),
             Err(PriorError::InvalidStandardDeviation(_))
@@ -288,7 +304,12 @@ mod tests {
 
     #[test]
     fn test_student_t_validation_invalid_df() {
-        let t_prior = StudentTPrior::new(0.0, 1.0, 0.5, (None, None));
+        let t_prior = StudentTPrior {
+            mean: 0.0,
+            sd: 1.0,
+            df: 0.5,
+            range: (None, None),
+        };
         assert!(matches!(
             t_prior.validate(),
             Err(PriorError::InvalidDegreesOfFreedom(_))
@@ -298,7 +319,12 @@ mod tests {
     #[test]
     fn test_student_t_validation_df_equals_one() {
         // df must be > 1, so df=1 should fail
-        let t_prior = StudentTPrior::new(0.0, 1.0, 1.0, (None, None));
+        let t_prior = StudentTPrior {
+            mean: 0.0,
+            sd: 1.0,
+            df: 1.0,
+            range: (None, None),
+        };
         assert!(matches!(
             t_prior.validate(),
             Err(PriorError::InvalidDegreesOfFreedom(_))
@@ -307,7 +333,12 @@ mod tests {
 
     #[test]
     fn test_student_t_validation_multiple_errors() {
-        let t_prior = StudentTPrior::new(0.0, -1.0, 0.5, (None, None));
+        let t_prior = StudentTPrior {
+            mean: 0.0,
+            sd: -1.0,
+            df: 0.5,
+            range: (None, None),
+        };
         match t_prior.validate() {
             Err(PriorError::MultipleErrors(errors)) => {
                 assert_eq!(errors.len(), 2);
@@ -318,7 +349,12 @@ mod tests {
 
     #[test]
     fn test_student_t_validation_equal_range() {
-        let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), Some(0.0)));
+        let t_prior = StudentTPrior {
+            mean: 0.0,
+            sd: 1.0,
+            df: 3.0,
+            range: (Some(0.0), Some(0.0)),
+        };
         let result = t_prior.validate();
         assert!(result.is_err());
     }
@@ -327,13 +363,13 @@ mod tests {
 
     #[test]
     fn test_student_t_normalization_unbounded() {
-        let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None));
+        let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).unwrap();
         assert_eq!(t_prior.normalize().unwrap(), 1.0);
     }
 
     #[test]
     fn test_student_t_normalization_half() {
-        let half_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), None));
+        let half_t = StudentTPrior::new(0.0, 1.0, 3.0, (Some(0.0), None)).unwrap();
         assert_relative_eq!(half_t.normalize().unwrap(), 0.5, epsilon = 1e-10);
     }
 
@@ -341,17 +377,17 @@ mod tests {
 
     #[test]
     fn test_student_t_range_behavior() {
-        let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None));
+        let t_prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).unwrap();
         assert_eq!(t_prior.range(), (None, None));
         assert!(t_prior.has_default_range());
 
-        let truncated = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), Some(1.0)));
+        let truncated = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), Some(1.0))).unwrap();
         assert!(!truncated.has_default_range());
     }
 
     #[test]
     fn test_truncated_student_t_outside_bounds() {
-        let truncated = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), Some(1.0)));
+        let truncated = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), Some(1.0))).unwrap();
         assert_eq!(truncated.function(5.0).unwrap(), 0.0);
         assert_eq!(truncated.function(-5.0).unwrap(), 0.0);
     }

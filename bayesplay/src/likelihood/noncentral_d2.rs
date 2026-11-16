@@ -30,13 +30,13 @@ use crate::prelude::NoncentralTLikelihood;
 /// use bayesplay::prelude::*;
 ///
 /// // Effect size d = 0.5 with group sizes of 25 and 30
-/// let likelihood = NoncentralD2Likelihood::new(0.5, 25.0, 30.0);
+/// let likelihood = NoncentralD2Likelihood::new(0.5, 25.0, 30.0).unwrap();
 ///
 /// // Validate parameters
 /// assert!(likelihood.validate().is_ok());
 ///
 /// // Combine with a prior
-/// let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
+/// let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).unwrap().into();
 /// let model: Model = Likelihood::from(likelihood) * prior;
 /// ```
 #[derive(Default, Clone, Copy, Serialize, Deserialize, Debug, PartialEq, PartialOrd)]
@@ -64,13 +64,15 @@ impl NoncentralD2Likelihood {
     /// ```
     /// use bayesplay::prelude::*;
     ///
-    /// let likelihood = NoncentralD2Likelihood::new(0.5, 10.0, 15.0);
+    /// let likelihood = NoncentralD2Likelihood::new(0.5, 10.0, 15.0).unwrap();
     /// assert_eq!(likelihood.d, 0.5);
     /// assert_eq!(likelihood.n1, 10.0);
     /// assert_eq!(likelihood.n2, 15.0);
     /// ```
-    pub fn new(d: f64, n1: f64, n2: f64) -> Self {
-        NoncentralD2Likelihood { d, n1, n2 }
+    pub fn new(d: f64, n1: f64, n2: f64) -> Result<Self, LikelihoodError> {
+        let value = NoncentralD2Likelihood { d, n1, n2 };
+        value.validate()?;
+        Ok(value)
     }
 
     /// The effective sample size `n1 * n2 / (n1 + n2)` relating d to t
@@ -82,7 +84,10 @@ impl NoncentralD2Likelihood {
     /// The equivalent noncentral t likelihood (t = d√n_eff, df = n1 + n2 − 2),
     /// whose parameter is the noncentrality δ√n_eff rather than δ.
     pub fn to_noncentral_t(&self) -> NoncentralTLikelihood {
-        NoncentralTLikelihood::new(self.d * self.effective_n().sqrt(), self.n1 + self.n2 - 2.0)
+        NoncentralTLikelihood {
+            t: self.d * self.effective_n().sqrt(),
+            df: self.n1 + self.n2 - 2.0,
+        }
     }
 }
 
@@ -122,16 +127,14 @@ impl LogFunction<LikelihoodError> for NoncentralD2Likelihood {
 /// use bayesplay::prelude::*;
 ///
 /// // Valid parameters
-/// let valid = NoncentralD2Likelihood::new(0.5, 25.0, 30.0);
+/// let valid = NoncentralD2Likelihood::new(0.5, 25.0, 30.0).unwrap();
 /// assert!(valid.validate().is_ok());
 ///
 /// // Invalid: n1 < 1
-/// let invalid = NoncentralD2Likelihood::new(0.5, 0.5, 30.0);
-/// assert!(matches!(invalid.validate(), Err(LikelihoodError::InvalidN1(_))));
+/// assert!(matches!(NoncentralD2Likelihood::new(0.5, 0.5, 30.0), Err(LikelihoodError::InvalidN1(_))));
 ///
 /// // Invalid: both n1 and n2 < 1
-/// let both_invalid = NoncentralD2Likelihood::new(0.5, 0.5, 0.5);
-/// assert!(matches!(both_invalid.validate(), Err(LikelihoodError::MultipleErrors(_))));
+/// assert!(matches!(NoncentralD2Likelihood::new(0.5, 0.5, 0.5), Err(LikelihoodError::MultipleErrors(_))));
 /// ```
 impl Validate<LikelihoodError> for NoncentralD2Likelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {
@@ -163,7 +166,7 @@ impl Validate<LikelihoodError> for NoncentralD2Likelihood {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let mut likelihood = NoncentralD2Likelihood::new(0.5, 25.0, 30.0);
+/// let mut likelihood = NoncentralD2Likelihood::new(0.5, 25.0, 30.0).unwrap();
 ///
 /// assert_eq!(likelihood.get_observation(), Some(0.5));
 ///

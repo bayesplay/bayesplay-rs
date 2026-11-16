@@ -30,7 +30,7 @@ use crate::common::Validate;
 /// use bayesplay::prelude::*;
 ///
 /// // t-statistic of 2.5 with 29 degrees of freedom
-/// let likelihood = NoncentralTLikelihood::new(2.5, 29.0);
+/// let likelihood = NoncentralTLikelihood::new(2.5, 29.0).unwrap();
 ///
 /// // Evaluate the likelihood at ncp = 0 (null hypothesis)
 /// let null_value = likelihood.function(0.0).unwrap();
@@ -59,12 +59,14 @@ impl NoncentralTLikelihood {
     /// ```rust
     /// use bayesplay::prelude::*;
     ///
-    /// let likelihood = NoncentralTLikelihood::new(2.5, 29.0);
+    /// let likelihood = NoncentralTLikelihood::new(2.5, 29.0).unwrap();
     /// assert_eq!(likelihood.t, 2.5);
     /// assert_eq!(likelihood.df, 29.0);
     /// ```
-    pub fn new(t: f64, df: f64) -> Self {
-        NoncentralTLikelihood { t, df }
+    pub fn new(t: f64, df: f64) -> Result<Self, LikelihoodError> {
+        let value = NoncentralTLikelihood { t, df };
+        value.validate()?;
+        Ok(value)
     }
 }
 
@@ -96,7 +98,7 @@ impl LogFunction<LikelihoodError> for NoncentralTLikelihood {
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
-/// let mut likelihood = NoncentralTLikelihood::new(2.5, 29.0);
+/// let mut likelihood = NoncentralTLikelihood::new(2.5, 29.0).unwrap();
 ///
 /// assert_eq!(likelihood.get_observation(), Some(2.5));
 ///
@@ -123,12 +125,11 @@ impl Observation for NoncentralTLikelihood {
 /// use bayesplay::prelude::*;
 ///
 /// // Valid parameters
-/// let valid = NoncentralTLikelihood::new(2.5, 29.0);
+/// let valid = NoncentralTLikelihood::new(2.5, 29.0).unwrap();
 /// assert!(valid.validate().is_ok());
 ///
 /// // Invalid: df < 1
-/// let invalid = NoncentralTLikelihood::new(2.5, 0.5);
-/// assert!(matches!(invalid.validate(), Err(LikelihoodError::InvalidDF(_))));
+/// assert!(matches!(NoncentralTLikelihood::new(2.5, 0.5), Err(LikelihoodError::InvalidDF(_))));
 /// ```
 impl Validate<LikelihoodError> for NoncentralTLikelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {

@@ -23,10 +23,10 @@ use serde::{Deserialize, Serialize};
 /// use bayesplay::prelude::*;
 ///
 /// // Effect size d = 0.5 from a sample of 30
-/// let likelihood = NoncentralDLikelihood::new(0.5, 30.0);
+/// let likelihood = NoncentralDLikelihood::new(0.5, 30.0).unwrap();
 ///
 /// // Combine with a Cauchy prior on effect size
-/// let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
+/// let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).unwrap().into();
 /// let model: Model = Likelihood::from(likelihood) * prior;
 ///
 /// // Compute the marginal likelihood
@@ -53,7 +53,7 @@ impl NoncentralDLikelihood {
     /// ```
     /// use bayesplay::prelude::*;
     ///
-    /// let likelihood = NoncentralDLikelihood::new(2.5, 10.0);
+    /// let likelihood = NoncentralDLikelihood::new(2.5, 10.0).unwrap();
     /// let likelihood: Likelihood = likelihood.into();
     /// match likelihood {
     ///     Likelihood::NoncentralD(noncentral_d) => {
@@ -63,8 +63,10 @@ impl NoncentralDLikelihood {
     ///     _ => panic!("Expected NoncentralD variant"),
     /// }
     /// ```
-    pub fn new(d: f64, n: f64) -> Self {
-        NoncentralDLikelihood { d, n }
+    pub fn new(d: f64, n: f64) -> Result<Self, LikelihoodError> {
+        let value = NoncentralDLikelihood { d, n };
+        value.validate()?;
+        Ok(value)
     }
 
     /// The effective sample size relating d to t (`t = d * sqrt(n)`); for a
@@ -76,7 +78,10 @@ impl NoncentralDLikelihood {
     /// The equivalent noncentral t likelihood (t = d√n, df = n − 1), whose
     /// parameter is the noncentrality δ√n rather than δ.
     pub fn to_noncentral_t(&self) -> NoncentralTLikelihood {
-        NoncentralTLikelihood::new(self.d * self.n.sqrt(), self.n - 1.0)
+        NoncentralTLikelihood {
+            t: self.d * self.n.sqrt(),
+            df: self.n - 1.0,
+        }
     }
 }
 
@@ -163,7 +168,7 @@ mod tests {
     fn test_noncentral_d_likelihood() {
         let d = 0.5;
         let n = 10.0;
-        let likelihood = NoncentralDLikelihood::new(d, n);
+        let likelihood = NoncentralDLikelihood::new(d, n).unwrap();
         let x = 1.0;
         let result = likelihood.function(x).unwrap();
         approx_eq!(result, 0.128_440_99);
