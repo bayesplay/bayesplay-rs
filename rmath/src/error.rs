@@ -73,6 +73,22 @@ pub(crate) fn require(
     }
 }
 
+/// `value` is not NaN. As in R, location parameters may be infinite (the
+/// density is then 0 at every finite point).
+pub(crate) fn require_not_nan(
+    distribution: Distribution,
+    parameter: &'static str,
+    value: f64,
+) -> Result<()> {
+    require(
+        !value.is_nan(),
+        distribution,
+        parameter,
+        value,
+        "must not be NaN",
+    )
+}
+
 /// `value` is a finite real number.
 pub(crate) fn require_finite(
     distribution: Distribution,

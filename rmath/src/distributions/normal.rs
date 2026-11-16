@@ -1,8 +1,8 @@
-use crate::error::{Distribution, Error, Result, require_finite, require_positive};
+use crate::error::{Distribution, Error, Result, require_not_nan, require_positive};
 use statrs::distribution::{Continuous, ContinuousCDF};
 
 fn normal(mean: f64, sd: f64) -> Result<statrs::distribution::Normal> {
-    require_finite(Distribution::Normal, "mean", mean)?;
+    require_not_nan(Distribution::Normal, "mean", mean)?;
     require_positive(Distribution::Normal, "sd", sd)?;
     statrs::distribution::Normal::new(mean, sd).map_err(|_| Error::InvalidParameter {
         distribution: Distribution::Normal,

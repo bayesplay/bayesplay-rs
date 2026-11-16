@@ -2,7 +2,7 @@ use rmath::lbeta;
 use serde::{Deserialize, Serialize};
 
 use super::{Normalize, PriorDensity, PriorError, validate_positive_range};
-use crate::common::{Range, Validate, truncated_normalization};
+use crate::common::{Range, Validate, truncated_ln_normalization};
 
 /// A symmetric beta-prime prior for a positive ratio.
 ///
@@ -23,55 +23,29 @@ impl BetaPrimePrior {
         Ok(value)
     }
 
-    fn cdf(&self, q: f64, lower_tail: bool) -> Result<f64, PriorError> {
-        let probability = if q <= 0.0 {
-            if lower_tail { 0.0 } else { 1.0 }
-        } else if q.is_infinite() {
-            if lower_tail { 1.0 } else { 0.0 }
+    /// `ln P(X <= q)` (or `ln P(X > q)`), via `X / (1 + X) ~ Beta(alpha, alpha)`.
+    fn ln_cdf(&self, q: f64, lower_tail: bool) -> Result<f64, PriorError> {
+        if q <= 0.0 {
+            return Ok(if lower_tail { f64::NEG_INFINITY } else { 0.0 });
+        }
+        if q.is_infinite() {
+            return Ok(if lower_tail { 0.0 } else { f64::NEG_INFINITY });
+        }
+        // Above 1 use reciprocal symmetry (1/X has the same distribution), so
+        // the beta argument stays small instead of rounding towards 1.
+        let (rho, beta_lower_tail) = if q <= 1.0 {
+            (q / (1.0 + q), lower_tail)
         } else {
-            let (rho, beta_lower_tail) = if q <= 1.0 {
-                (q / (1.0 + q), lower_tail)
-            } else {
-                let reciprocal = q.recip();
-                (reciprocal / (1.0 + reciprocal), !lower_tail)
-            };
-            if rho < 1e-8 {
-                let lower_probability = self.small_symmetric_beta_tail(rho)?;
-                if beta_lower_tail {
-                    lower_probability
-                } else {
-                    1.0 - lower_probability
-                }
-            } else {
-                rmath::pbeta(rho, self.alpha, self.alpha, beta_lower_tail, false)
-                    .map_err(PriorError::DistributionError)?
-            }
+            let reciprocal = q.recip();
+            (reciprocal / (1.0 + reciprocal), !lower_tail)
         };
-        Ok(probability)
-    }
-
-    /// Stable `I_x(alpha, alpha)` for very small `x`, where the generic beta
-    /// CDF can round a representable tail probability to zero.
-    fn small_symmetric_beta_tail(&self, x: f64) -> Result<f64, PriorError> {
-        if x == 0.0 {
-            return Ok(0.0);
-        }
-        let mut term = 1.0;
-        let mut series = 1.0;
-        for n in 1..=64 {
-            let previous = (n - 1) as f64;
-            term *= (self.alpha + previous) * (1.0 - self.alpha + previous)
-                / ((self.alpha + 1.0 + previous) * n as f64)
-                * x;
-            series += term;
-            if term.abs() <= series.abs() * f64::EPSILON {
-                break;
-            }
-        }
-        let log_leading = self.alpha * x.ln()
-            - self.alpha.ln()
-            - lbeta(self.alpha, self.alpha).map_err(PriorError::DistributionError)?;
-        Ok(log_leading.exp() * series)
+        Ok(rmath::pbeta(
+            rho,
+            self.alpha,
+            self.alpha,
+            beta_lower_tail,
+            true,
+        )?)
     }
 }
 
@@ -100,13 +74,18 @@ impl Validate<PriorError> for BetaPrimePrior {
 
 impl Normalize for BetaPrimePrior {
     fn normalize(&self) -> Result<f64, PriorError> {
+        Ok(self.ln_normalize()?.exp())
+    }
+
+    fn ln_normalize(&self) -> Result<f64, PriorError> {
         self.validate()?;
         let (lower, upper) = self.range_or_default();
-        let mass = truncated_normalization(lower, upper, |x, lower_tail| self.cdf(x, lower_tail))?;
-        if !mass.is_finite() || mass <= 0.0 {
+        let ln_mass =
+            truncated_ln_normalization(lower, upper, |x, lower_tail| self.ln_cdf(x, lower_tail))?;
+        if ln_mass.is_nan() || ln_mass == f64::NEG_INFINITY {
             return Err(PriorError::NormalizingError);
         }
-        Ok(mass)
+        Ok(ln_mass)
     }
 }
 

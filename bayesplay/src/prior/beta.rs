@@ -1,4 +1,4 @@
-use crate::common::truncated_normalization;
+use crate::common::truncated_ln_normalization;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -201,16 +201,19 @@ impl PriorDensity for BetaPrior {
 /// Probability mass of the truncation interval under the untruncated Beta prior.
 impl Normalize for BetaPrior {
     fn normalize(&self) -> Result<f64, PriorError> {
+        Ok(self.ln_normalize()?.exp())
+    }
+
+    fn ln_normalize(&self) -> Result<f64, PriorError> {
         self.validate()?;
         let (lower, upper) = self.range_or_default();
-        let mass = truncated_normalization(lower, upper, |q, lower_tail| {
-            rmath::pbeta(q, self.alpha, self.beta, lower_tail, false)
-                .map_err(PriorError::DistributionError)
+        let ln_mass = truncated_ln_normalization(lower, upper, |q, lower_tail| {
+            Ok::<_, PriorError>(rmath::pbeta(q, self.alpha, self.beta, lower_tail, true)?)
         })?;
-        if !mass.is_finite() || mass <= 0.0 {
+        if ln_mass.is_nan() || ln_mass == f64::NEG_INFINITY {
             return Err(PriorError::NormalizingError);
         }
-        Ok(mass)
+        Ok(ln_mass)
     }
 }
 

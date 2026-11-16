@@ -294,6 +294,10 @@ const PEAK_WINDOW_WIDTHS: f64 = 8.0;
 /// mode; each shrinks the bracket by a factor of 0.618.
 const MODE_SEARCH_ITERATIONS: usize = 100;
 
+/// A semi-infinite piece is integrated over `ln|x|` when its finite end is
+/// more than this many kernel scales from zero.
+const LOG_TRANSFORM_SCALES: f64 = 1e3;
+
 /// Cut points closer together than this many (narrowest) peak widths are
 /// merged.
 const MERGE_CUTS_WIDTHS: f64 = 0.5;
@@ -433,49 +437,110 @@ where
         .chain(std::iter::once(core_upper))
         .collect::<Vec<_>>();
 
-    let mut error = None;
-    let mut integrate_piece = |a: f64, b: f64, abs_tol: f64, tolerance: ToleranceMode| {
-        let result = Quadrature {
-            lower: a,
-            upper: b,
-            abs_tol,
-            tolerance,
-            ..Default::default()
-        }
-        .integrate(|x: f64| match ln_f(x) {
-            Ok(value) => (value - scale).exp(),
-            Err(e) => {
-                error.get_or_insert(e);
-                f64::NAN
-            }
-        });
-        match error.take() {
-            Some(e) => Err(IntegralError::from(e)),
-            None => Ok(result?.value),
-        }
-    };
-
     let defaults = Quadrature::default();
-    let mut core = 0.0;
+    // The scale the kernel varies on: its narrowest peak, or 1 without hints.
+    let unit = windows
+        .iter()
+        .map(|&(_, width)| width)
+        .fold(f64::INFINITY, f64::min);
+    let unit = if unit.is_finite() { unit } else { 1.0 };
+    let mut error = None;
+    // Integrates one piece and returns the log of its integral. `ln_abs_tol`
+    // is an absolute tolerance on the log scale (None: the default).
+    let mut ln_integrate_piece =
+        |a: f64, b: f64, ln_abs_tol: Option<f64>, tolerance: ToleranceMode| {
+            // A semi-infinite piece far from zero is integrated over
+            // u = ln|x|: its mass may sit at the scale of its finite end (e.g.
+            // a beta-prime prior on [1e200, inf)), far beyond where the
+            // quadrature's map of an infinite interval samples, while in u a
+            // polynomial tail decays on a unit scale. Nearer zero the plain
+            // map is accurate, and cheaper for kernels that are expensive to
+            // evaluate at huge |x|.
+            let far = |end: f64| end.abs() > LOG_TRANSFORM_SCALES * unit;
+            let (sign, lower, upper) = if b == f64::INFINITY && a > 0.0 && far(a) {
+                (1.0, a.ln(), f64::INFINITY)
+            } else if a == f64::NEG_INFINITY && b < 0.0 && far(b) {
+                (-1.0, (-b).ln(), f64::INFINITY)
+            } else {
+                (0.0, a, b)
+            };
+            // The transformed integrand carries a Jacobian |x|, so scale it by
+            // the largest |x| at which the kernel is near its peak.
+            let piece_scale = if sign == 0.0 {
+                scale
+            } else {
+                let mode_in_piece = mode > a && mode < b;
+                scale
+                    + lower.max(if mode_in_piece {
+                        mode.abs().ln()
+                    } else {
+                        lower
+                    })
+            };
+            let abs_tol = ln_abs_tol.map_or(defaults.abs_tol, |l| (l - piece_scale).exp());
+            let result = Quadrature {
+                lower,
+                upper,
+                abs_tol,
+                tolerance,
+                ..Default::default()
+            }
+            .integrate(|t: f64| {
+                // dx = |x| du when x = sign * e^u.
+                let (x, ln_jacobian) = if sign == 0.0 {
+                    (t, 0.0)
+                } else {
+                    (sign * t.exp(), t)
+                };
+                if x.is_infinite() {
+                    // e^u overflowed: a density has no mass at infinity.
+                    return 0.0;
+                }
+                match ln_f(x) {
+                    Ok(value) => (value + ln_jacobian - piece_scale).exp(),
+                    Err(e) => {
+                        error.get_or_insert(e);
+                        f64::NAN
+                    }
+                }
+            });
+            match error.take() {
+                Some(e) => Err(IntegralError::from(e)),
+                None => Ok(piece_scale + result?.value.ln()),
+            }
+        };
+
+    let mut ln_core = f64::NEG_INFINITY;
     for piece in core_pieces.windows(2) {
-        core += integrate_piece(piece[0], piece[1], defaults.abs_tol, ToleranceMode::Both)?;
+        let ln_piece = ln_integrate_piece(piece[0], piece[1], None, ToleranceMode::Both)?;
+        ln_core = ln_add_exp(ln_core, ln_piece);
     }
 
     // The tails hold little mass, so they only need to be accurate relative to
     // the core. Demanding relative accuracy on their own tiny values is slow
     // (densities there can be expensive) and can fail to converge at all.
-    let (tail_tol, tail_mode) = if core > 0.0 {
-        (defaults.rel_tol * core, ToleranceMode::Either)
+    let (ln_tail_tol, tail_mode) = if ln_core.is_finite() {
+        (Some(defaults.rel_tol.ln() + ln_core), ToleranceMode::Either)
     } else {
-        (defaults.abs_tol, ToleranceMode::Both)
+        (None, ToleranceMode::Both)
     };
-    let mut tails = 0.0;
+    let mut ln_total = ln_core;
     for (a, b) in [(lower, core_lower), (core_upper, upper)] {
         if a < b {
-            tails += integrate_piece(a, b, tail_tol, tail_mode)?;
+            ln_total = ln_add_exp(ln_total, ln_integrate_piece(a, b, ln_tail_tol, tail_mode)?);
         }
     }
-    Ok(scale + (core + tails).ln())
+    Ok(ln_total)
+}
+
+/// `ln(exp(a) + exp(b))` without overflow; `-inf` acts as zero.
+fn ln_add_exp(a: f64, b: f64) -> f64 {
+    let (high, low) = if a >= b { (a, b) } else { (b, a) };
+    if low == f64::NEG_INFINITY {
+        high
+    } else {
+        high + (low - high).exp().ln_1p()
+    }
 }
 
 /// Maximizes `f` over `[a, b]` by golden-section search until the bracket is
@@ -873,6 +938,48 @@ mod tests {
             1.0 / std::f64::consts::PI.sqrt(),
             max_relative = 1e-9
         );
+    }
+
+    #[test]
+    fn beta_and_beta_prime_priors_truncated_far_into_a_tail() {
+        // Beta(5, 1) truncated to [0, 1e-70]: mass (1e-70)^5, which underflows.
+        // R: pbeta(1e-70, 5, 1, log.p = TRUE).
+        let ln_mass = -805.904_782_547_916;
+        let beta = BetaPrior::new(5.0, 1.0, (None, Some(1e-70))).unwrap();
+        assert_relative_eq!(beta.ln_normalize().unwrap(), ln_mass, max_relative = 1e-12);
+        // Density at x is 5 x^4 / mass.
+        let x = 5e-71_f64;
+        assert_relative_eq!(
+            beta.ln_function(x).unwrap(),
+            5.0_f64.ln() + 4.0 * x.ln() - ln_mass,
+            max_relative = 1e-12
+        );
+        assert_relative_eq!(
+            Prior::from(beta).integral().unwrap().value,
+            1.0,
+            epsilon = 1e-8
+        );
+
+        // BetaPrime(3, 3) truncated to [1e200, inf): P(X > 1e200) is the
+        // Beta(3, 3) lower tail at ~1e-200. R: pbeta(1e-200, 3, 3, log.p = TRUE).
+        let ln_mass = -1_379.248_470_703_433_4;
+        let beta_prime = BetaPrimePrior::new(3.0, (Some(1e200), None)).unwrap();
+        assert_relative_eq!(
+            beta_prime.ln_normalize().unwrap(),
+            ln_mass,
+            max_relative = 1e-12
+        );
+        assert_relative_eq!(
+            Prior::from(beta_prime).integral().unwrap().value,
+            1.0,
+            epsilon = 1e-7
+        );
+
+        // A likelihood in that tail sees an ordinary, finite marginal.
+        let model =
+            Likelihood::from(BinomialLikelihood::new(0.0, 10.0).unwrap()) * Prior::from(beta);
+        let value = model.integral().unwrap().value;
+        assert!(value.is_finite() && value > 0.0);
     }
 
     #[test]

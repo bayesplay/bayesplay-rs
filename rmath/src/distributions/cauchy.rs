@@ -1,8 +1,8 @@
-use crate::error::{Distribution, Error, Result, require_finite, require_positive};
+use crate::error::{Distribution, Error, Result, require_not_nan, require_positive};
 use statrs::distribution::{Cauchy, Continuous};
 
 fn cauchy(location: f64, scale: f64) -> Result<Cauchy> {
-    require_finite(Distribution::Cauchy, "location", location)?;
+    require_not_nan(Distribution::Cauchy, "location", location)?;
     require_positive(Distribution::Cauchy, "scale", scale)?;
     Cauchy::new(location, scale).map_err(|_| Error::InvalidParameter {
         distribution: Distribution::Cauchy,
