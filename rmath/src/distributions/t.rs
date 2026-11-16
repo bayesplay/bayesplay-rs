@@ -1,4 +1,5 @@
 use crate::distributions::normal::{dnorm, pnorm};
+use crate::error::{Distribution, Error, Result, require_positive};
 
 use statrs::distribution::{Beta, Normal, StudentsT};
 use statrs::distribution::{Continuous, ContinuousCDF};
@@ -11,7 +12,7 @@ const LN_2: f64 = core::f64::consts::LN_2;
 const M_SQRT_2D_PI: f64 = 0.797_884_560_802_865_4;
 const DBL_EPSILON: f64 = f64::EPSILON; // 2.22e-16, as in R's C headers
 
-pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static str> {
+pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64> {
     if x.is_nan() || df.is_nan() || ncp.is_nan() {
         return Ok(x + df + ncp);
     }
@@ -169,7 +170,7 @@ fn pnt_uses_normal_approximation(df: f64, ncp: f64) -> bool {
     df > 4e5 || ncp * ncp > -2.0 * LN_2 * DBL_MIN_EXP
 }
 
-pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
+pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f64> {
     let itrmax = 1000;
     let errmax = 1e-12;
 
@@ -240,7 +241,12 @@ pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f
         let albeta = M_LN_SQRT_PI + ln_gamma(b) - ln_gamma(0.5 + b);
 
         let mut xodd = Beta::new(a, b)
-            .map_err(|_| "Error creating Beta distribution")?
+            .map_err(|_| Error::InvalidParameter {
+                distribution: Distribution::StudentT,
+                parameter: "df".into(),
+                value: df,
+                requirement: "must be positive".into(),
+            })?
             .cdf(x);
 
         let mut godd = 2. * rxb * (a * x.ln() - albeta).exp();
@@ -290,7 +296,7 @@ pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f
         }
     }
 
-    let pnorm = Normal::new(0.0, 1.0).map_err(|_| "Error creating Normal distribution")?;
+    let pnorm = Normal::new(0.0, 1.0).expect("the standard normal is valid");
 
     tnc += pnorm.cdf(-del);
 
@@ -303,16 +309,26 @@ pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f
     }
 }
 
-pub fn dt(x: f64, df: f64, log_p: bool) -> Result<f64, &'static str> {
-    let dist = StudentsT::new(0.0, 1.0, df).map_err(|_| "Error creating Student t distribution")?;
+fn students_t(df: f64) -> Result<StudentsT> {
+    require_positive(Distribution::StudentT, "df", df)?;
+    StudentsT::new(0.0, 1.0, df).map_err(|_| Error::InvalidParameter {
+        distribution: Distribution::StudentT,
+        parameter: "df".into(),
+        value: df,
+        requirement: "rejected by statrs".into(),
+    })
+}
+
+pub fn dt(x: f64, df: f64, log_p: bool) -> Result<f64> {
+    let dist = students_t(df)?;
     match log_p {
         true => Ok(dist.ln_pdf(x)),
         false => Ok(dist.pdf(x)),
     }
 }
 
-pub fn pt(q: f64, df: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
-    let dist = StudentsT::new(0.0, 1.0, df).map_err(|_| "Error creating Student t distribution")?;
+pub fn pt(q: f64, df: f64, lower_tail: bool, log_p: bool) -> Result<f64> {
+    let dist = students_t(df)?;
     // Only one tail is evaluated per call. In log space the tail that is
     // close to 1 is taken as ln_1p(-other tail) to avoid cancellation.
     match (lower_tail, log_p) {
@@ -374,12 +390,12 @@ pub fn pt_scaled(
     df: f64,
     lower_tail: bool,
     log_p: bool,
-) -> Result<f64, &'static str> {
+) -> Result<f64> {
     pt((q - mean) / sd, df, lower_tail, log_p)
 }
 
 /// Density of a location-scale t: `X = mean + sd * T`, `T ~ t(df)`.
-pub fn dt_scaled(x: f64, mean: f64, sd: f64, df: f64, log: bool) -> Result<f64, &'static str> {
+pub fn dt_scaled(x: f64, mean: f64, sd: f64, df: f64, log: bool) -> Result<f64> {
     let density = dt((x - mean) / sd, df, log)?;
     Ok(if log { density - sd.ln() } else { density / sd })
 }

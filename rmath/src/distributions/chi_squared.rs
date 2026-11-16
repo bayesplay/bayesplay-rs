@@ -1,7 +1,14 @@
+use crate::error::{Distribution, Error, Result, require_positive};
 use statrs::distribution::{ChiSquared, Continuous};
 
-pub fn dchisq(x: f64, df: f64, log: bool) -> Result<f64, &'static str> {
-    let dist = ChiSquared::new(df).map_err(|_| "Error creating Chi-squared distribution")?;
+pub fn dchisq(x: f64, df: f64, log: bool) -> Result<f64> {
+    require_positive(Distribution::ChiSquared, "df", df)?;
+    let dist = ChiSquared::new(df).map_err(|_| Error::InvalidParameter {
+        distribution: Distribution::ChiSquared,
+        parameter: "df".into(),
+        value: df,
+        requirement: "rejected by statrs".into(),
+    })?;
     let log_density = dist.ln_pdf(x);
     Ok(if log { log_density } else { log_density.exp() })
 }

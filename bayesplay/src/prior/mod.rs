@@ -129,7 +129,7 @@ pub enum PriorError {
     #[error("Error normalizing prior.")]
     NormalizingError,
     #[error("Error with distribution: {0}")]
-    DistributionError(&'static str),
+    DistributionError(#[from] rmath::Error),
     #[error("Multiple validation errors: {}", .0.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("; "))]
     MultipleErrors(Vec<PriorError>),
 }

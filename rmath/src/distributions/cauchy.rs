@@ -1,7 +1,19 @@
+use crate::error::{Distribution, Error, Result, require_finite, require_positive};
 use statrs::distribution::{Cauchy, Continuous};
 
-pub fn dcauchy(x: f64, location: f64, scale: f64, log: bool) -> Result<f64, &'static str> {
-    let dist = Cauchy::new(location, scale).map_err(|_| "Error creating Cauchy distribution")?;
+fn cauchy(location: f64, scale: f64) -> Result<Cauchy> {
+    require_finite(Distribution::Cauchy, "location", location)?;
+    require_positive(Distribution::Cauchy, "scale", scale)?;
+    Cauchy::new(location, scale).map_err(|_| Error::InvalidParameter {
+        distribution: Distribution::Cauchy,
+        parameter: "scale".into(),
+        value: scale,
+        requirement: "rejected by statrs".into(),
+    })
+}
+
+pub fn dcauchy(x: f64, location: f64, scale: f64, log: bool) -> Result<f64> {
+    let dist = cauchy(location, scale)?;
 
     match log {
         true => Ok(dist.ln_pdf(x)),
@@ -9,14 +21,8 @@ pub fn dcauchy(x: f64, location: f64, scale: f64, log: bool) -> Result<f64, &'st
     }
 }
 
-pub fn pcauchy(
-    q: f64,
-    location: f64,
-    scale: f64,
-    lower_tail: bool,
-    log_p: bool,
-) -> Result<f64, &'static str> {
-    Cauchy::new(location, scale).map_err(|_| "Error creating Cauchy distribution")?;
+pub fn pcauchy(q: f64, location: f64, scale: f64, lower_tail: bool, log_p: bool) -> Result<f64> {
+    cauchy(location, scale)?;
     let x = q - location;
     // atan(scale / |x|) computes the small tail without subtracting from 1/2.
     let small_tail = scale.atan2(x.abs()) / core::f64::consts::PI;

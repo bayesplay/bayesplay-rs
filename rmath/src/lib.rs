@@ -5,6 +5,7 @@
 //! accurate in the tails and on the log scale.
 
 pub mod distributions;
+pub mod error;
 pub mod integration;
 
 pub use distributions::beta::{dbeta, lbeta, pbeta};
@@ -15,4 +16,5 @@ pub use distributions::exponential::{dexp, pexp};
 pub use distributions::normal::{dnorm, pnorm};
 pub use distributions::t::{dnt, dt, dt_scaled, pnt, pt, pt_scaled};
 pub use distributions::uniform::{dunif, punif};
+pub use error::{Distribution, Error, Result};
 pub use integration::{IntegrationError, IntegratorResult, Quadrature, ToleranceMode, integrate};

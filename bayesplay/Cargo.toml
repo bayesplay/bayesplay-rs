@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rmath = { version = "0.1.0", path = "../rmath" }
+rmath = { version = "0.1.0", path = "../rmath", features = ["serde"] }
 serde = { version = "1.0.197", features = ["derive"] }
 thiserror = "2.0.12"
 # The approx traits are implemented for `Auc`, so this is part of the public API.

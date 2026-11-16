@@ -7,6 +7,10 @@ edition = "2024"
 gkquad = { version = "0.0.4", default-features = false, features = ["std"] }
 statrs = "0.16.0"
 thiserror = "2.0.12"
+serde = { version = "1.0.197", features = ["derive"], optional = true }
 
 [dev-dependencies]
 approx_eq = "0.1.8"
+
+[features]
+serde = ["dep:serde"]

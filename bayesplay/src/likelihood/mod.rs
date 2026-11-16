@@ -110,7 +110,7 @@ pub enum LikelihoodError {
     #[error("Invalid probability value of {0}. Probability must be between 0 and 1")]
     InvalidProbability(f64),
     #[error("Error with distribution: {0}")]
-    DistributionError(&'static str),
+    DistributionError(#[from] rmath::Error),
     #[error("Multiple validation errors: {}", .0.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("; "))]
     MultipleErrors(Vec<LikelihoodError>),
 }

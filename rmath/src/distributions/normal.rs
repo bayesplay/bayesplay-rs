@@ -1,14 +1,19 @@
+use crate::error::{Distribution, Error, Result, require_finite, require_positive};
 use statrs::distribution::{Continuous, ContinuousCDF};
 
-pub fn pnorm(
-    q: f64,
-    mean: f64,
-    sd: f64,
-    lower_tail: bool,
-    log_p: bool,
-) -> Result<f64, &'static str> {
-    let dist = statrs::distribution::Normal::new(mean, sd)
-        .map_err(|_| "Error creating Normal distribution")?;
+fn normal(mean: f64, sd: f64) -> Result<statrs::distribution::Normal> {
+    require_finite(Distribution::Normal, "mean", mean)?;
+    require_positive(Distribution::Normal, "sd", sd)?;
+    statrs::distribution::Normal::new(mean, sd).map_err(|_| Error::InvalidParameter {
+        distribution: Distribution::Normal,
+        parameter: "sd".into(),
+        value: sd,
+        requirement: "rejected by statrs".into(),
+    })
+}
+
+pub fn pnorm(q: f64, mean: f64, sd: f64, lower_tail: bool, log_p: bool) -> Result<f64> {
+    let dist = normal(mean, sd)?;
 
     match (lower_tail, log_p) {
         (true, true) => Ok(if q > mean {
@@ -50,9 +55,8 @@ fn ln_upper_tail(z: f64) -> f64 {
     -0.5 * z * z - 0.5 * (2.0 * core::f64::consts::PI).ln() - z.ln() + series.ln()
 }
 
-pub fn dnorm(x: f64, mean: f64, sd: f64, log: bool) -> Result<f64, &'static str> {
-    let dist = statrs::distribution::Normal::new(mean, sd)
-        .map_err(|_| "Error creating Normal distribution")?;
+pub fn dnorm(x: f64, mean: f64, sd: f64, log: bool) -> Result<f64> {
+    let dist = normal(mean, sd)?;
 
     match log {
         true => Ok(dist.ln_pdf(x)),

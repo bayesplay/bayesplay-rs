@@ -1,17 +1,33 @@
+use crate::error::{Distribution, Error, Result, require};
 use statrs::distribution::{Discrete, DiscreteCDF};
 
-fn binomial(size: f64, prob: f64) -> Result<statrs::distribution::Binomial, &'static str> {
+fn binomial(size: f64, prob: f64) -> Result<statrs::distribution::Binomial> {
     // `as u64` would silently truncate (or saturate) a non-integer or negative size.
-    if !(size >= 0.0 && size.fract() == 0.0 && size <= u64::MAX as f64) {
-        return Err("Binomial size must be a non-negative whole number");
-    }
-    statrs::distribution::Binomial::new(prob, size as u64)
-        .map_err(|_| "Error creating Binomial distribution")
+    require(
+        size >= 0.0 && size.fract() == 0.0 && size <= u64::MAX as f64,
+        Distribution::Binomial,
+        "size",
+        size,
+        "must be a non-negative whole number",
+    )?;
+    require(
+        (0.0..=1.0).contains(&prob),
+        Distribution::Binomial,
+        "prob",
+        prob,
+        "must be between 0 and 1",
+    )?;
+    statrs::distribution::Binomial::new(prob, size as u64).map_err(|_| Error::InvalidParameter {
+        distribution: Distribution::Binomial,
+        parameter: "prob".into(),
+        value: prob,
+        requirement: "rejected by statrs".into(),
+    })
 }
 
 /// Binomial probability mass. As in R, the mass is 0 at any `x` that is not a
 /// whole number in `0..=size`.
-pub fn dbinom(x: f64, size: f64, prob: f64, log: bool) -> Result<f64, &'static str> {
+pub fn dbinom(x: f64, size: f64, prob: f64, log: bool) -> Result<f64> {
     let dist = binomial(size, prob)?;
     if !(0.0..=size).contains(&x) || x.fract() != 0.0 {
         return Ok(if log { f64::NEG_INFINITY } else { 0.0 });
@@ -23,13 +39,7 @@ pub fn dbinom(x: f64, size: f64, prob: f64, log: bool) -> Result<f64, &'static s
     })
 }
 
-pub fn pbinom(
-    x: f64,
-    size: f64,
-    prob: f64,
-    lower_tail: bool,
-    log_p: bool,
-) -> Result<f64, &'static str> {
+pub fn pbinom(x: f64, size: f64, prob: f64, lower_tail: bool, log_p: bool) -> Result<f64> {
     let dist = binomial(size, prob)?;
     let (cdf, sf) = if x < 0.0 {
         (0.0, 1.0)

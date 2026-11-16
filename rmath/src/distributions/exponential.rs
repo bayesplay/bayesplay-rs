@@ -1,8 +1,14 @@
+use crate::error::{Distribution, Error, Result, require_positive};
 use statrs::distribution::Continuous;
 
-pub fn dexp(x: f64, rate: f64, log: bool) -> Result<f64, &'static str> {
-    let dist = statrs::distribution::Exp::new(rate)
-        .map_err(|_| "Error creating Exponential distribution")?;
+pub fn dexp(x: f64, rate: f64, log: bool) -> Result<f64> {
+    require_positive(Distribution::Exponential, "rate", rate)?;
+    let dist = statrs::distribution::Exp::new(rate).map_err(|_| Error::InvalidParameter {
+        distribution: Distribution::Exponential,
+        parameter: "rate".into(),
+        value: rate,
+        requirement: "rejected by statrs".into(),
+    })?;
 
     match log {
         true => Ok(dist.ln_pdf(x)),
@@ -10,8 +16,8 @@ pub fn dexp(x: f64, rate: f64, log: bool) -> Result<f64, &'static str> {
     }
 }
 
-pub fn pexp(q: f64, rate: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
-    statrs::distribution::Exp::new(rate).map_err(|_| "Error creating Exponential distribution")?;
+pub fn pexp(q: f64, rate: f64, lower_tail: bool, log_p: bool) -> Result<f64> {
+    require_positive(Distribution::Exponential, "rate", rate)?;
 
     if q < 0.0 {
         return match (lower_tail, log_p) {
@@ -46,10 +52,18 @@ mod tests {
     #[test]
     fn pexp_rejects_invalid_rates() {
         for rate in [0.0, -1.0, f64::NAN] {
-            assert_eq!(
-                pexp(1.0, rate, true, false),
-                Err("Error creating Exponential distribution")
-            );
+            match pexp(1.0, rate, true, false) {
+                Err(Error::InvalidParameter {
+                    distribution: Distribution::Exponential,
+                    parameter,
+                    value,
+                    ..
+                }) => {
+                    assert_eq!(parameter, "rate");
+                    assert!(value == rate || (value.is_nan() && rate.is_nan()));
+                }
+                other => panic!("rate={rate}: {other:?}"),
+            }
         }
     }
 

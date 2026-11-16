@@ -269,6 +269,7 @@ version = "0.1.0"
 dependencies = [
  "approx_eq",
  "gkquad",
+ "serde",
  "statrs",
  "thiserror",
 ]
