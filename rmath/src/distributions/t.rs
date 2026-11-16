@@ -32,10 +32,19 @@ pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static st
         return dnorm(x, ncp, 1., give_log);
     }
 
-    // Where pnt() falls back to its normal approximation, the pnt() difference
-    // below is not a density at all (e.g. log dnt(30, 19, 45) is off by 0.27).
-    if pnt_uses_normal_approximation(df, ncp)
-        && let Some(accurate) = dnt_by_integration(x, df, ncp)
+    let mixture = NoncentralTMixture::new(x, df, ncp);
+    // Integrate directly where the pnt() difference below cannot be used:
+    // - pnt() falls back to a normal approximation, so the difference is not a
+    //   density at all (e.g. log dnt(30, 19, 45) was off by 0.27);
+    // - the density is clearly below the cancellation threshold (by a cheap
+    //   Laplace estimate), so the two pnt() series would only be discarded.
+    // Misjudging the second case only costs time: tiny pnt()-based values are
+    // still caught and recomputed below.
+    let clearly_tiny = mixture
+        .as_ref()
+        .is_some_and(|m| m.laplace_estimate() < DNT_CANCELLATION_LOG_THRESHOLD - 2.0);
+    if (pnt_uses_normal_approximation(df, ncp) || clearly_tiny)
+        && let Some(accurate) = mixture.as_ref().and_then(NoncentralTMixture::integrate)
     {
         return Ok(if give_log { accurate } else { accurate.exp() });
     }
@@ -60,7 +69,7 @@ pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static st
     // error, which R reports as "full precision may not have been achieved".
     // Below the threshold use a positive-integrand representation instead.
     if !(u.is_finite() && u > DNT_CANCELLATION_LOG_THRESHOLD)
-        && let Some(accurate) = dnt_by_integration(x, df, ncp)
+        && let Some(accurate) = mixture.as_ref().and_then(NoncentralTMixture::integrate)
     {
         return Ok(if give_log { accurate } else { accurate.exp() });
     }
@@ -74,51 +83,84 @@ pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static st
 /// as a roundoff error in the integrator).
 const DNT_CANCELLATION_LOG_THRESHOLD: f64 = -6.907_755_278_982_137;
 
-/// log of the noncentral-t density via
+/// The noncentral-t density as a positive mixture:
 ///   f(x) = integral_0^inf  s * phi(x s - ncp) * h(s) ds,
 /// where s = sqrt(V/df), V ~ chi^2_df has density h(s) (so T = Z'/s, Z' ~ N(ncp, 1)).
-/// Every term is positive, so there is no cancellation. The integrand is scaled
-/// by its (closed-form) mode so deep tails do not underflow.
-fn dnt_by_integration(x: f64, df: f64, ncp: f64) -> Option<f64> {
-    use crate::integration::{Integrate, integratewrapper};
+/// Every term is positive, so there is no cancellation. The integrand's mode
+/// is closed-form; integrating relative to it keeps deep tails from underflowing.
+struct NoncentralTMixture {
+    x: f64,
+    df: f64,
+    ncp: f64,
+    ln_h_const: f64,
+    /// Mode of the integrand in s, and the log integrand there.
+    mode: f64,
+    peak: f64,
+    /// -(d^2/ds^2) of the log integrand at the mode.
+    curvature: f64,
+}
 
-    let half_df = df / 2.0;
-    let ln_h_const = LN_2 + half_df * half_df.ln() - ln_gamma(half_df);
-    let ln_norm = 0.5 * (2.0 * core::f64::consts::PI).ln();
-    let log_integrand = move |s: f64| -> f64 {
-        let z = x * s - ncp;
-        s.ln() - 0.5 * z * z - ln_norm + ln_h_const + (df - 1.0) * s.ln() - df * s * s / 2.0
-    };
-
-    // d/ds log integrand = 0  <=>  (df + x^2) s^2 - x*ncp*s - df = 0
-    let a = df + x * x;
-    let b = x * ncp;
-    let mode = (b + (b * b + 4.0 * df * a).sqrt()) / (2.0 * a);
-    if !(mode.is_finite() && mode > 0.0) {
-        return None;
+impl NoncentralTMixture {
+    fn new(x: f64, df: f64, ncp: f64) -> Option<Self> {
+        let half_df = df / 2.0;
+        let ln_h_const = LN_2 + half_df * half_df.ln() - ln_gamma(half_df);
+        // d/ds log integrand = 0  <=>  (df + x^2) s^2 - x*ncp*s - df = 0
+        let a = df + x * x;
+        let b = x * ncp;
+        let mode = (b + (b * b + 4.0 * df * a).sqrt()) / (2.0 * a);
+        if !(mode.is_finite() && mode > 0.0) {
+            return None;
+        }
+        let mut mixture = Self {
+            x,
+            df,
+            ncp,
+            ln_h_const,
+            mode,
+            peak: 0.0,
+            curvature: df / (mode * mode) + a,
+        };
+        mixture.peak = mixture.log_integrand(mode);
+        Some(mixture)
     }
-    let peak = log_integrand(mode);
-    let width = 1.0 / (a + df).sqrt(); // scale of the peak (curvature >= a + df)
-    let upper = mode + 40.0 * width;
-    let result = integratewrapper(Integrate {
-        f: Some(move |s: f64| {
-            if s <= 0.0 {
-                0.0
-            } else {
-                (log_integrand(s) - peak).exp()
-            }
-        }),
-        lower: Some((mode - 40.0 * width).max(0.0)),
-        upper: Some(upper),
-        points: Some(vec![mode]),
-        // integrand is scaled to a peak of 1, so abs_tol is effectively relative too;
-        // a purely relative tolerance trips the roundoff detector on the ~0 tails
-        abs_tol: 1e-13,
-        rel_tol: 1e-10,
-        ..Default::default()
-    })
-    .ok()?;
-    (result.value > 0.0 && result.value.is_finite()).then(|| peak + result.value.ln())
+
+    fn log_integrand(&self, s: f64) -> f64 {
+        let z = self.x * s - self.ncp;
+        let ln_norm = 0.5 * (2.0 * core::f64::consts::PI).ln();
+        self.df * s.ln() - 0.5 * z * z - ln_norm + self.ln_h_const - self.df * s * s / 2.0
+    }
+
+    /// Laplace approximation to the log density: cheap, and within O(1) of the
+    /// truth for this unimodal integrand.
+    fn laplace_estimate(&self) -> f64 {
+        self.peak + 0.5 * (2.0 * core::f64::consts::PI / self.curvature).ln()
+    }
+
+    /// The log density by quadrature.
+    fn integrate(&self) -> Option<f64> {
+        use crate::integration::{Integrate, integratewrapper};
+
+        let width = self.curvature.sqrt().recip();
+        let result = integratewrapper(Integrate {
+            f: Some(|s: f64| {
+                if s <= 0.0 {
+                    0.0
+                } else {
+                    (self.log_integrand(s) - self.peak).exp()
+                }
+            }),
+            lower: Some((self.mode - 40.0 * width).max(0.0)),
+            upper: Some(self.mode + 40.0 * width),
+            points: Some(vec![self.mode]),
+            // integrand is scaled to a peak of 1, so abs_tol is effectively relative too;
+            // a purely relative tolerance trips the roundoff detector on the ~0 tails
+            abs_tol: 1e-13,
+            rel_tol: 1e-10,
+            ..Default::default()
+        })
+        .ok()?;
+        (result.value > 0.0 && result.value.is_finite()).then(|| self.peak + result.value.ln())
+    }
 }
 
 /// pnt() abandons its series for a normal approximation when df is huge or the

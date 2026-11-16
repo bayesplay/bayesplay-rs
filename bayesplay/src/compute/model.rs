@@ -296,6 +296,10 @@ const PEAK_WINDOW_WIDTHS: f64 = 8.0;
 /// mode; each shrinks the bracket by a factor of 0.618.
 const MODE_SEARCH_ITERATIONS: usize = 100;
 
+/// Cut points closer together than this many (narrowest) peak widths are
+/// merged.
+const MERGE_CUTS_WIDTHS: f64 = 0.5;
+
 /// The mode search stops once its bracket is this many (narrowest) peak
 /// widths wide.
 const MODE_TOLERANCE_WIDTHS: f64 = 0.05;
@@ -393,7 +397,12 @@ where
         }
     }
     let (mode, peak) = best;
-    if let Some(width) = curvature_width(&eval, mode, min_width, lower, upper)? {
+    if let Some(width) = curvature_width(&eval, mode, min_width, lower, upper)?
+        && !windows
+            .iter()
+            .any(|&(centre, w)| (centre - mode).abs() < w.min(width))
+    {
+        // Only a mode away from every existing window needs one of its own.
         windows.push((mode, width));
     }
     let scale = if peak.is_finite() { peak } else { 0.0 };
@@ -408,7 +417,14 @@ where
         .map(|x| x.clamp(lower, upper))
         .collect();
     cuts.sort_by(f64::total_cmp);
-    cuts.dedup();
+    // Overlapping windows leave near-duplicate cuts; each sliver between them
+    // would cost a full quadrature rule, so merge cuts closer than this.
+    let min_gap = MERGE_CUTS_WIDTHS
+        * windows
+            .iter()
+            .map(|&(_, w)| w)
+            .fold(f64::INFINITY, f64::min);
+    cuts.dedup_by(|later, kept| *later - *kept < min_gap);
     let (core_lower, core_upper) = match (cuts.first(), cuts.last()) {
         (Some(&first), Some(&last)) if first < last => (first, last),
         _ => (lower, upper),
