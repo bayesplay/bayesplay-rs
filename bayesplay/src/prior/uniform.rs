@@ -2,7 +2,7 @@ use rmath::dunif;
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
 
@@ -103,12 +103,11 @@ impl Range for UniformPrior {
 /// // Outside the interval: density = 0
 /// assert_eq!(uniform.function(3.0).unwrap(), 0.0);
 /// ```
-impl Function<f64, f64, PriorError> for UniformPrior {
-    fn function(&self, x: f64) -> Result<f64, PriorError> {
+impl LogFunction<PriorError> for UniformPrior {
+    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
         self.validate()?;
-        let min = self.min;
-        let max = self.max;
-        dunif!(x = x, min = min, max = max).map_err(PriorError::DistributionError)
+        dunif!(x = x, min = self.min, max = self.max, log = true)
+            .map_err(PriorError::DistributionError)
     }
 }
 
@@ -153,6 +152,7 @@ impl Normalize for UniformPrior {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Function;
     use crate::prior::Prior;
     use approx::assert_relative_eq;
 

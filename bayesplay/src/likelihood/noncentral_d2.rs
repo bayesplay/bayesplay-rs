@@ -2,7 +2,7 @@ use rmath::dt;
 use serde::{Deserialize, Serialize};
 
 use super::{LikelihoodError, Observation};
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Validate;
 use crate::prelude::NoncentralTLikelihood;
 
@@ -87,33 +87,29 @@ impl NoncentralD2Likelihood {
     }
 }
 
-impl Function<f64, f64, LikelihoodError> for NoncentralD2Likelihood {
-    /// Computes the likelihood function for the given input `x`.
-    ///
-    /// # Parameters
-    /// - `x`: The input value for the likelihood function.
-    ///
-    /// # Returns
-    /// A `Result` containing the computed likelihood value or a `LikelihoodError`.
-    ///
-    /// # Examples
-    /// ```
-    /// use bayesplay::prelude::*;
-    ///
-    /// let likelihood = NoncentralD2Likelihood { d: 0.5, n1: 10.0, n2: 15.0 };
-    /// let result = likelihood.function(1.0);
-    /// assert!(result.is_ok());
-    /// assert!((result.unwrap() - 0.19076591569612219579).abs() < 1e-10);
-    /// ```
-    fn function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        let d = self.d;
-        let n1 = self.n1;
-        let n2 = self.n2;
-
-        let ncp = x * ((n1 * n2) / (n1 + n2)).sqrt();
-        let df = n1 + n2 - 2.0;
-        let x = d / (1. / n1 + 1. / n2).sqrt();
-        dt!(x = x, df = df, ncp = ncp).map_err(LikelihoodError::DistributionError)
+/// Computes the likelihood function for the given input `x`.
+///
+/// # Parameters
+/// - `x`: The input value for the likelihood function.
+///
+/// # Returns
+/// A `Result` containing the computed likelihood value or a `LikelihoodError`.
+///
+/// # Examples
+/// ```
+/// use bayesplay::prelude::*;
+///
+/// let likelihood = NoncentralD2Likelihood { d: 0.5, n1: 10.0, n2: 15.0 };
+/// let result = likelihood.function(1.0);
+/// assert!(result.is_ok());
+/// assert!((result.unwrap() - 0.19076591569612219579).abs() < 1e-10);
+/// ```
+impl LogFunction<LikelihoodError> for NoncentralD2Likelihood {
+    fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        let sqrt_n = self.effective_n().sqrt();
+        let df = self.n1 + self.n2 - 2.0;
+        dt!(x = self.d * sqrt_n, df = df, ncp = x * sqrt_n, log = true)
+            .map_err(LikelihoodError::DistributionError)
     }
 }
 

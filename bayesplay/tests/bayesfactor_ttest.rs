@@ -1,6 +1,7 @@
 //! Bayes factors for one- and two-sample t-tests with (truncated) Cauchy
 //! priors, checked against the R package BayesFactor and an independent
-//! high-precision reference
+//! high-precision reference. See `data/bayesfactor_ttest.R` for how the
+//! fixture is generated and why both columns exist.
 
 use bayesplay::prelude::*;
 
@@ -65,8 +66,10 @@ impl Case {
             && (self.bayesfactor_logbf - self.reference_logbf).abs() < BAYESFACTOR_CONVERGED
     }
 
-    /// The cases that bayesplay sends to the `estimate_marginal`
-    fn will_estimate(&self) -> bool {
+    /// The cases that bayesplay used to send to the `estimate_marginal`
+    /// heuristic instead of integrating: |t| > 15, or |t| > 5 with the observed
+    /// effect size outside the prior's interval.
+    fn in_former_heuristic_regime(&self) -> bool {
         let d = self.t / self.effective_n().sqrt();
         let outside = d < self.lower || d > self.upper;
         self.t.abs() > 15.0 || (self.t.abs() > 5.0 && outside)
@@ -127,7 +130,6 @@ fn fixture_is_complete() {
 }
 
 #[test]
-#[ignore = "fails while Model::integral() uses the estimate_marginal"]
 fn matches_bayesfactor_where_bayesfactor_converges() {
     let cases: Vec<Case> = cases()
         .into_iter()
@@ -148,7 +150,6 @@ fn matches_bayesfactor_where_bayesfactor_converges() {
 }
 
 #[test]
-#[ignore = "fails while Model::integral() uses the estimate_marginal"]
 fn matches_high_precision_reference_for_every_case() {
     let failures = check(&cases(), |c| c.reference_logbf);
     assert!(
@@ -160,13 +161,12 @@ fn matches_high_precision_reference_for_every_case() {
 }
 
 #[test]
-#[ignore = "fails while Model::integral() uses the estimate_marginal"]
 fn large_t_and_out_of_interval_cases_are_exact() {
     // These are the cases most at risk: large statistics, and effects far
     // outside a truncated prior. Keep them covered explicitly.
     let cases: Vec<Case> = cases()
         .into_iter()
-        .filter(Case::will_estimate)
+        .filter(Case::in_former_heuristic_regime)
         .collect();
     assert!(cases.len() > 300, "only {} large-t rows", cases.len());
     assert!(cases.iter().filter(|c| c.bayesfactor_converged()).count() > 100);
@@ -177,4 +177,33 @@ fn large_t_and_out_of_interval_cases_are_exact() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+#[test]
+fn bayes_factors_survive_an_underflowing_null_marginal() {
+    // t = ±3 * sqrt(1000) ~ 94.9 with df = 999: ln m0 = -1152.66, far below
+    // f64's range. References from data/bayesfactor_ttest.R (log_bf_reference,
+    // which agrees with the JZS integral for the unbounded prior).
+    let n: f64 = 1000.0;
+    for (d, lower, upper, expected) in [
+        (3.0, None, None, 1_145.466_267_695_54),
+        (3.0, Some(0.0), None, 1_146.159_414_876_1),
+        (3.0, None, Some(0.0), -6.960_348_297_581_5),
+        (-3.0, None, None, 1_145.466_267_695_54),
+        (-3.0, Some(0.0), None, -6.960_348_297_581_5),
+    ] {
+        let likelihood: Likelihood = NoncentralDLikelihood::new(d, n).into();
+        let h1 = (likelihood * Prior::from(CauchyPrior::new(0.0, 0.707, (lower, upper))))
+            .integral()
+            .unwrap();
+        let h0 = (likelihood * Prior::from(PointPrior::new(0.0)))
+            .integral()
+            .unwrap();
+        assert_eq!(h0.value, 0.0, "the null marginal should underflow");
+        let log_bf = h1.log_value - h0.log_value;
+        assert!(
+            (log_bf - expected).abs() < 1e-6,
+            "d={d} [{lower:?}, {upper:?}]: {log_bf} vs {expected}"
+        );
+    }
 }

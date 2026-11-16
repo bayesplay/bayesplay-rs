@@ -110,6 +110,7 @@ pub mod prelude {
     pub use crate::common::Family;
     pub use crate::common::Function;
     pub use crate::common::Integrate;
+    pub use crate::common::LogFunction;
     pub use crate::common::Range;
     pub use crate::common::Validate;
 

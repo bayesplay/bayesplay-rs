@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 use super::Normalize;
 use super::PriorError;
 use super::{is_valid_parameter, validate_range};
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
-use crate::common::truncated_normalization;
+use crate::common::truncated_ln_normalization;
 ///
 /// A normal distribution prior with customizable parameters.
 ///
@@ -178,94 +178,95 @@ impl Normalize for NormalPrior {
     /// }
     /// ```
     fn normalize(&self) -> Result<f64, PriorError> {
+        Ok(self.ln_normalize()?.exp())
+    }
+
+    fn ln_normalize(&self) -> Result<f64, PriorError> {
         let (lower, upper) = self.range_or_default();
-        let res = truncated_normalization(lower, upper, |x, lower_tail| {
+        let ln_mass = truncated_ln_normalization(lower, upper, |x, lower_tail| {
             pnorm!(
                 q = x,
                 mean = self.mean,
                 sd = self.sd,
-                lower_tail = lower_tail
+                lower_tail = lower_tail,
+                log_p = true
             )
             .map_err(PriorError::DistributionError)
         })?;
-
-        if res == 0.0 {
-            Err(PriorError::NormalizingError)?;
+        if ln_mass.is_nan() || ln_mass == f64::NEG_INFINITY {
+            return Err(PriorError::NormalizingError);
         }
-        Ok(res)
+        Ok(ln_mass)
     }
 }
 
 /// Implementation of the Function trait for NormalPrior to calculate probability density.
-impl Function<f64, f64, PriorError> for NormalPrior {
-    /// Calculates the probability density function (PDF) of the normal distribution at point x.
-    ///
-    /// For truncated distributions, returns 0.0 if x is outside the bounds.
-    ///
-    /// # Arguments
-    ///
-    /// * `x` - The point at which to evaluate the PDF
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(density)` - The probability density at point x
-    /// * `Err(PriorError)` - If validation fails or distribution calculations error
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bayesplay::prelude::*;
-    /// use std::f64::consts::PI;
-    ///
-    /// // Standard normal PDF at x=0 should be 1/sqrt(2π)
-    /// if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (None, None)).into() {
-    ///     let expected = 1.0 / (2.0 * PI).sqrt();
-    ///     let actual = prior.function(0.0).unwrap();
-    ///     assert!((actual - expected).abs() < 1e-10);
-    /// }
-    ///
-    /// // Evaluate at the mean of a custom normal distribution
-    /// if let Prior::Normal(prior) = NormalPrior::new(2.0, 0.5, (None, None)).into() {
-    ///     let expected = 1.0 / (2.0 * PI * 0.5 * 0.5).sqrt();
-    ///     let actual = prior.function(2.0).unwrap();
-    ///     assert!((actual - expected).abs() < 1e-10);
-    /// }
-    ///
-    /// // Truncated normal: value outside bounds should return 0
-    /// if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0))).into() {
-    ///     assert_eq!(prior.function(2.0).unwrap(), 0.0);
-    /// }
-    ///
-    /// // Truncated normal: value inside bounds needs normalization
-    /// if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0))).into() {
-    ///     let density = prior.function(0.0).unwrap();
-    ///     let unnormalized = 1.0 / (2.0 * PI).sqrt();
-    ///     let normalization = prior.normalize().unwrap();
-    ///     assert!((density - unnormalized/normalization).abs() < 1e-10);
-    /// }
-    /// ```
-    fn function(&self, x: f64) -> Result<f64, PriorError> {
+/// Calculates the probability density function (PDF) of the normal distribution at point x.
+///
+/// For truncated distributions, returns 0.0 if x is outside the bounds.
+///
+/// # Arguments
+///
+/// * `x` - The point at which to evaluate the PDF
+///
+/// # Returns
+///
+/// * `Ok(density)` - The probability density at point x
+/// * `Err(PriorError)` - If validation fails or distribution calculations error
+///
+/// # Examples
+///
+/// ```
+/// use bayesplay::prelude::*;
+/// use std::f64::consts::PI;
+///
+/// // Standard normal PDF at x=0 should be 1/sqrt(2π)
+/// if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (None, None)).into() {
+///     let expected = 1.0 / (2.0 * PI).sqrt();
+///     let actual = prior.function(0.0).unwrap();
+///     assert!((actual - expected).abs() < 1e-10);
+/// }
+///
+/// // Evaluate at the mean of a custom normal distribution
+/// if let Prior::Normal(prior) = NormalPrior::new(2.0, 0.5, (None, None)).into() {
+///     let expected = 1.0 / (2.0 * PI * 0.5 * 0.5).sqrt();
+///     let actual = prior.function(2.0).unwrap();
+///     assert!((actual - expected).abs() < 1e-10);
+/// }
+///
+/// // Truncated normal: value outside bounds should return 0
+/// if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0))).into() {
+///     assert_eq!(prior.function(2.0).unwrap(), 0.0);
+/// }
+///
+/// // Truncated normal: value inside bounds needs normalization
+/// if let Prior::Normal(prior) = NormalPrior::new(0.0, 1.0, (Some(-1.0), Some(1.0))).into() {
+///     let density = prior.function(0.0).unwrap();
+///     let unnormalized = 1.0 / (2.0 * PI).sqrt();
+///     let normalization = prior.normalize().unwrap();
+///     assert!((density - unnormalized/normalization).abs() < 1e-10);
+/// }
+/// ```
+impl LogFunction<PriorError> for NormalPrior {
+    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
         self.validate()?;
-        let mean = self.mean;
-        let sd = self.sd;
+        let log_density = dnorm!(x = x, mean = self.mean, sd = self.sd, log = true)
+            .map_err(PriorError::DistributionError)?;
         if self.has_default_range() {
-            return dnorm!(x = x, mean = mean, sd = sd).map_err(PriorError::DistributionError);
+            return Ok(log_density);
         }
-
         let (lower, upper) = self.range_or_default();
-
         if !(lower..=upper).contains(&x) {
-            return Ok(0.0);
+            return Ok(f64::NEG_INFINITY);
         }
-        let k = self.normalize()?;
-        let density = dnorm!(x = x, mean = mean, sd = sd).map_err(PriorError::DistributionError)?;
-        Ok(density / k)
+        Ok(log_density - self.ln_normalize()?)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Function;
     use crate::prior::Prior;
     use approx::assert_relative_eq;
     use std::f64::consts::PI;

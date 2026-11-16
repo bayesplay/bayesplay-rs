@@ -2,7 +2,7 @@ use rmath::dt;
 use serde::{Deserialize, Serialize};
 
 use super::{LikelihoodError, Observation};
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Validate;
 
 /// A noncentral t likelihood for t-statistic data.
@@ -82,11 +82,10 @@ impl NoncentralTLikelihood {
 /// assert!((result.unwrap() - 0.31460591844887925150).abs() < 1e-10);
 ///
 /// ```
-impl Function<f64, f64, LikelihoodError> for NoncentralTLikelihood {
-    fn function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        let df = self.df;
-        let t = self.t;
-        dt!(x = t, df = df, ncp = x).map_err(LikelihoodError::DistributionError)
+impl LogFunction<LikelihoodError> for NoncentralTLikelihood {
+    fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
+        dt!(x = self.t, df = self.df, ncp = x, log = true)
+            .map_err(LikelihoodError::DistributionError)
     }
 }
 

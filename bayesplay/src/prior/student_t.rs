@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 use super::Normalize;
 use super::PriorError;
 use super::{is_valid_parameter, validate_range};
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
-use crate::common::truncated_normalization;
+use crate::common::truncated_ln_normalization;
 
 /// A Student's t distribution prior with customizable parameters.
 ///
@@ -159,27 +159,25 @@ impl Validate<PriorError> for StudentTPrior {
 /// let truncated = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), Some(1.0)));
 /// assert_eq!(truncated.function(5.0).unwrap(), 0.0);
 /// ```
-impl Function<f64, f64, PriorError> for StudentTPrior {
-    fn function(&self, x: f64) -> Result<f64, PriorError> {
+impl LogFunction<PriorError> for StudentTPrior {
+    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
         self.validate()?;
-        let mean = self.mean;
-        let sd = self.sd;
-        let df = self.df;
+        let log_density = dt_scaled!(
+            x = x,
+            mean = self.mean,
+            sd = self.sd,
+            df = self.df,
+            log = true
+        )
+        .map_err(PriorError::DistributionError)?;
         if self.has_default_range() {
-            return dt_scaled!(x = x, mean = mean, sd = sd, df = df)
-                .map_err(PriorError::DistributionError);
+            return Ok(log_density);
         }
-
         let (lower, upper) = self.range_or_default();
-
-        if x < lower || x > upper {
-            Ok(0.0)
-        } else {
-            let k = 1.0 / self.normalize()?;
-            Ok(dt_scaled!(x = x, mean = mean, sd = sd, df = df)
-                .map_err(PriorError::DistributionError)?
-                * k)
+        if !(lower..=upper).contains(&x) {
+            return Ok(f64::NEG_INFINITY);
         }
+        Ok(log_density - self.ln_normalize()?)
     }
 }
 
@@ -203,22 +201,26 @@ impl Function<f64, f64, PriorError> for StudentTPrior {
 /// ```
 impl Normalize for StudentTPrior {
     fn normalize(&self) -> Result<f64, PriorError> {
+        Ok(self.ln_normalize()?.exp())
+    }
+
+    fn ln_normalize(&self) -> Result<f64, PriorError> {
         let (lower, upper) = self.range_or_default();
-        let res = truncated_normalization(lower, upper, |x, lower_tail| {
+        let ln_mass = truncated_ln_normalization(lower, upper, |x, lower_tail| {
             pt_scaled!(
                 q = x,
                 mean = self.mean,
                 sd = self.sd,
                 df = self.df,
-                lower_tail = lower_tail
+                lower_tail = lower_tail,
+                log_p = true
             )
             .map_err(PriorError::DistributionError)
         })?;
-
-        if res == 0.0 {
-            Err(PriorError::NormalizingError)?;
+        if ln_mass.is_nan() || ln_mass == f64::NEG_INFINITY {
+            return Err(PriorError::NormalizingError);
         }
-        Ok(res)
+        Ok(ln_mass)
     }
 }
 
@@ -236,6 +238,7 @@ impl Range for StudentTPrior {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Function;
     use crate::prior::Prior;
     use approx::assert_relative_eq;
 

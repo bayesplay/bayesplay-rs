@@ -39,7 +39,7 @@ pub fn dexp(x: f64, rate: f64, log: bool) -> Result<f64, &'static str> {
         .map_err(|_| "Error creating Exponential distribution")?;
 
     match log {
-        true => Ok(dist.pdf(x).ln()),
+        true => Ok(dist.ln_pdf(x)),
         false => Ok(dist.pdf(x)),
     }
 }

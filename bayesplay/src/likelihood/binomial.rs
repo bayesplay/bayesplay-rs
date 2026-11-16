@@ -2,7 +2,7 @@ use rmath::dbinom;
 
 use serde::{Deserialize, Serialize};
 
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Validate;
 use crate::likelihood::LikelihoodError;
 use crate::likelihood::Observation;
@@ -76,31 +76,29 @@ impl BinomialLikelihood {
     }
 }
 
-impl Function<f64, f64, LikelihoodError> for BinomialLikelihood {
-    /// Evaluates the binomial likelihood function for a given probability `p`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use bayesplay::prelude::*;
-    ///
-    /// let likelihood = BinomialLikelihood { successes: 3.0, trials: 10.0 };
-    ///
-    /// // Valid probability
-    /// let result = likelihood.function(0.5);
-    /// assert!(result.is_ok());
-    /// assert!((result.unwrap() - 0.11718750000000013878).abs() < 1e-10);
-    ///
-    /// ```
-    fn function(&self, p: f64) -> Result<f64, LikelihoodError> {
+/// Evaluates the binomial likelihood function for a given probability `p`.
+///
+/// # Examples
+///
+/// ```
+/// use bayesplay::prelude::*;
+///
+/// let likelihood = BinomialLikelihood { successes: 3.0, trials: 10.0 };
+///
+/// // Valid probability
+/// let result = likelihood.function(0.5);
+/// assert!(result.is_ok());
+/// assert!((result.unwrap() - 0.11718750000000013878).abs() < 1e-10);
+///
+/// ```
+impl LogFunction<LikelihoodError> for BinomialLikelihood {
+    fn ln_function(&self, p: f64) -> Result<f64, LikelihoodError> {
         self.validate()?;
         if !(0.0..=1.0).contains(&p) {
             return Err(LikelihoodError::InvalidProbability(p));
         }
-        let successes = self.successes;
-        let trials = self.trials;
-
-        dbinom!(prob = p, size = trials, x = successes).map_err(LikelihoodError::DistributionError)
+        dbinom!(prob = p, size = self.trials, x = self.successes, log = true)
+            .map_err(LikelihoodError::DistributionError)
     }
 }
 

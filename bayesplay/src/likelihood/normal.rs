@@ -27,7 +27,7 @@ pub struct NormalLikelihood {
     pub se: f64,
 }
 
-use crate::common::Function;
+use crate::common::LogFunction;
 use crate::common::Validate;
 use crate::likelihood::LikelihoodError;
 use crate::likelihood::Observation;
@@ -121,13 +121,12 @@ impl Observation for NormalLikelihood {
 /// let invalid_likelihood = NormalLikelihood { mean: 0.0, se: -1.0 };
 /// assert!(invalid_likelihood.function(0.0).is_err());
 /// ```
-impl Function<f64, f64, LikelihoodError> for NormalLikelihood {
-    fn function(&self, x: f64) -> Result<f64, LikelihoodError> {
+impl LogFunction<LikelihoodError> for NormalLikelihood {
+    fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
         self.validate()?;
-        let mean = self.mean;
-        let se = self.se;
-
-        dnorm!(x = mean, mean = x, sd = se).map_err(LikelihoodError::DistributionError)
+        // Density of the observed mean given the parameter x.
+        dnorm!(x = self.mean, mean = x, sd = self.se, log = true)
+            .map_err(LikelihoodError::DistributionError)
     }
 }
 
@@ -182,6 +181,7 @@ impl Validate<LikelihoodError> for NormalLikelihood {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Function;
     macro_rules! approx_eq {
         ($a:expr, $b:expr) => {
             assert_eq!($a as f32, $b as f32)
