@@ -93,6 +93,7 @@ impl Function<f64, f64, LikelihoodError> for BinomialLikelihood {
     ///
     /// ```
     fn function(&self, p: f64) -> Result<f64, LikelihoodError> {
+        self.validate()?;
         if !(0.0..=1.0).contains(&p) {
             return Err(LikelihoodError::InvalidProbability(p));
         }
@@ -174,15 +175,15 @@ impl Validate<LikelihoodError> for BinomialLikelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {
         let mut errors = Vec::new();
 
-        let trials_less_than_one = self.trials < 1.0;
-        let trials_is_not_whole_number = self.trials.fract() != 0.0;
-        if trials_less_than_one || trials_is_not_whole_number {
+        let trials_at_least_one = self.trials >= 1.0;
+        let trials_is_whole_number = self.trials.fract() == 0.0;
+        if !trials_at_least_one || !trials_is_whole_number {
             errors.push(LikelihoodError::InvalidTrials(self.trials));
         }
 
-        let successes_greater_than_trials = self.successes > self.trials;
-        let successes_is_not_whole_number = self.successes.fract() != 0.0;
-        if successes_greater_than_trials || successes_is_not_whole_number {
+        let successes_in_range = (0.0..=self.trials).contains(&self.successes);
+        let successes_is_whole_number = self.successes.fract() == 0.0;
+        if !successes_in_range || !successes_is_whole_number {
             errors.push(LikelihoodError::InvalidSuccess(self.successes));
         }
 

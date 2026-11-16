@@ -135,7 +135,7 @@ impl Observation for NoncentralTLikelihood {
 /// ```
 impl Validate<LikelihoodError> for NoncentralTLikelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {
-        if self.df < 1.0 {
+        if self.df.is_nan() || self.df < 1.0 || self.t.is_nan() {
             return Err(LikelihoodError::InvalidDF(self.df));
         }
         Ok(())

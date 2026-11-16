@@ -7,6 +7,7 @@ use crate::common::Range;
 use crate::common::Validate;
 
 use super::PriorError;
+use super::validate_range;
 
 /// A uniform distribution prior over a specified interval.
 ///
@@ -134,15 +135,11 @@ impl Function<f64, f64, PriorError> for UniformPrior {
 /// ```
 impl Validate<PriorError> for UniformPrior {
     fn validate(&self) -> Result<(), PriorError> {
-        if self.min == self.max {
-            Err(PriorError::InvalidRange)?;
+        // A uniform density needs a finite, non-empty interval.
+        if !(self.min.is_finite() && self.max.is_finite()) {
+            return Err(PriorError::InvalidRange);
         }
-
-        if self.min > self.max {
-            Err(PriorError::InvalidRange)?;
-        }
-
-        Ok(())
+        validate_range((self.min, self.max))
     }
 }
 

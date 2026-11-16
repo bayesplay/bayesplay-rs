@@ -95,11 +95,11 @@ impl Validate<LikelihoodError> for StudentTLikelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {
         let mut errors = Vec::new();
 
-        if self.sd <= 0.0 {
+        if !(self.sd > 0.0 && self.sd.is_finite()) {
             errors.push(LikelihoodError::InvalidSD(self.sd));
         }
 
-        if self.df <= 0.0 {
+        if self.df.is_nan() || self.df <= 0.0 {
             errors.push(LikelihoodError::InvalidDF(self.df));
         }
 
@@ -155,10 +155,7 @@ impl Function<f64, f64, LikelihoodError> for StudentTLikelihood {
         let df = self.df;
         let sd = self.sd;
 
-        dt_scaled(mean, x, sd, df)
+        // The density is symmetric in (observation, parameter).
+        Ok(dt!(x = (mean - x) / sd, df = df).map_err(LikelihoodError::DistributionError)? / sd)
     }
-}
-
-fn dt_scaled(x: f64, mean: f64, sd: f64, df: f64) -> Result<f64, LikelihoodError> {
-    Ok(dt!(x = (x - mean) / sd, df = df).map_err(LikelihoodError::DistributionError)? / sd)
 }

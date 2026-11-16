@@ -5,10 +5,11 @@ use serde::{Deserialize, Serialize};
 
 use super::Normalize;
 use super::PriorError;
-use crate::common::truncated_normalization;
+use super::{is_valid_parameter, validate_range};
 use crate::common::Function;
 use crate::common::Range;
 use crate::common::Validate;
+use crate::common::truncated_normalization;
 
 /// A Student's t distribution prior with customizable parameters.
 ///
@@ -119,17 +120,20 @@ impl Validate<PriorError> for StudentTPrior {
     fn validate(&self) -> Result<(), PriorError> {
         let mut errors: Vec<PriorError> = Vec::new();
 
-        if self.sd <= 0.0 {
+        if !is_valid_parameter(self.mean, false) {
+            errors.push(PriorError::InvalidLocation(self.mean));
+        }
+
+        if !is_valid_parameter(self.sd, true) {
             errors.push(PriorError::InvalidStandardDeviation(self.sd));
         }
 
-        if self.df <= 1.0 {
+        if self.df.is_nan() || self.df <= 1.0 {
             errors.push(PriorError::InvalidDegreesOfFreedom(self.df));
         }
 
-        let (lower, upper) = self.range_or_default();
-        if lower == upper {
-            errors.push(PriorError::InvalidRange);
+        if let Err(e) = validate_range(self.range_or_default()) {
+            errors.push(e);
         }
 
         PriorError::from_errors(errors)
@@ -157,12 +161,12 @@ impl Validate<PriorError> for StudentTPrior {
 /// ```
 impl Function<f64, f64, PriorError> for StudentTPrior {
     fn function(&self, x: f64) -> Result<f64, PriorError> {
-        // self.validate()?;
+        self.validate()?;
         let mean = self.mean;
         let sd = self.sd;
         let df = self.df;
         if self.has_default_range() {
-            return dt_scaled!(x = mean, mean = x, sd = sd, df = df)
+            return dt_scaled!(x = x, mean = mean, sd = sd, df = df)
                 .map_err(PriorError::DistributionError);
         }
 
@@ -172,7 +176,7 @@ impl Function<f64, f64, PriorError> for StudentTPrior {
             Ok(0.0)
         } else {
             let k = 1.0 / self.normalize()?;
-            Ok(dt_scaled!(x = mean, mean = x, sd = sd, df = df)
+            Ok(dt_scaled!(x = x, mean = mean, sd = sd, df = df)
                 .map_err(PriorError::DistributionError)?
                 * k)
         }

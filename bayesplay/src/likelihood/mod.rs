@@ -88,17 +88,21 @@ pub enum LikelihoodError {
     InvalidSD(f64),
     #[error("SE value of {0} is invalid. SE must be positive")]
     InvalidSE(f64),
-    #[error("N value of {0} is invalid. N must be positive")]
+    #[error("N value of {0} is invalid. N must be at least 2")]
     InvalidN(f64),
-    #[error("N1 value of {0} is invalid. N1 must be positive")]
+    #[error("N1 value of {0} is invalid. N1 must be at least 1")]
     InvalidN1(f64),
-    #[error("N2 value of {0} is invalid. N2 must be positive")]
+    #[error("N2 value of {0} is invalid. N2 must be at least 1")]
     InvalidN2(f64),
-    #[error("Trials value of {0} is invalid. Trails must be a positive integer")]
+    #[error("Trials value of {0} is invalid. Trials must be a positive integer")]
     InvalidTrials(f64),
-    #[error("Success value of {0} is invalid. Success must be positive integer and less Trials")]
+    #[error(
+        "Successes value of {0} is invalid. Successes must be a whole number between 0 and Trials"
+    )]
     InvalidSuccess(f64),
-    #[error("DF value of {0} is invalid. DF must be positive")]
+    #[error(
+        "DF value of {0} is invalid. DF must be positive (at least 1 for noncentral t/d likelihoods)"
+    )]
     InvalidDF(f64),
     #[error("U value of {0} is invalid. U must be positive")]
     InvalidU(f64),
@@ -400,12 +404,10 @@ mod tests {
 
     #[test]
     fn variance_likelihood_families_dispatch() {
-        let cases = [
-            (
-                Likelihood::from(VarianceRatioLikelihood::new(1.2, 9.0)),
-                LikelihoodFamily::VarianceRatio,
-            ),
-        ];
+        let cases = [(
+            Likelihood::from(VarianceRatioLikelihood::new(1.2, 9.0)),
+            LikelihoodFamily::VarianceRatio,
+        )];
 
         for (likelihood, expected) in cases {
             assert_eq!(likelihood.family(), expected);

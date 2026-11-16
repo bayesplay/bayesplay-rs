@@ -115,7 +115,7 @@ pub enum PriorError {
     InvalidLocation(f64),
     #[error("Invalid df ({0}). Must be greater than 1.")]
     InvalidDegreesOfFreedom(f64),
-    #[error("Invalid range. Upper and lower bounds must be different.")]
+    #[error("Invalid range. The lower bound must be below the upper bound.")]
     InvalidRange,
     #[error("Invalid range bounds. Must be between 0 and 1")]
     InvalidRangeBounds,
@@ -147,6 +147,21 @@ impl PriorError {
             _ => Err(PriorError::MultipleErrors(errors)),
         }
     }
+}
+
+/// Checks that a prior's effective support is a non-empty interval: no NaN
+/// bounds, and lower strictly below upper.
+pub(crate) fn validate_range(range: (f64, f64)) -> Result<(), PriorError> {
+    let (lower, upper) = range;
+    if lower.is_nan() || upper.is_nan() || lower >= upper {
+        return Err(PriorError::InvalidRange);
+    }
+    Ok(())
+}
+
+/// Checks that a location or scale-like parameter is finite and (if `positive`) > 0.
+pub(crate) fn is_valid_parameter(value: f64, positive: bool) -> bool {
+    value.is_finite() && (!positive || value > 0.0)
 }
 
 pub(crate) fn validate_positive_range(range: (Option<f64>, Option<f64>)) -> Result<(), PriorError> {

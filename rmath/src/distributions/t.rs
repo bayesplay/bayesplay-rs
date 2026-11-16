@@ -408,7 +408,7 @@ pub fn pt_scaled(args: PtScaled) -> Result<f64, &'static str> {
     let df = args
         .df
         .ok_or("argument \"df\" is missing, with no default")?;
-    let q = args.q.expect("argument \"q\" is missing, with no default");
+    let q = args.q.ok_or("argument \"q\" is missing, with no default")?;
     let q = (q - mean) / sd;
     let lower_tail = args
         .lower_tail
@@ -455,12 +455,12 @@ pub fn safe_dt(args: Dt) -> Result<f64, &'static str> {
         ),
 
         Some(ncp) => dnt(
-            args.x.expect("argument \"x\" is missing, with no default"),
+            args.x.ok_or("argument \"x\" is missing, with no default")?,
             args.df
-                .expect("argument \"df\" is missing, with no default"),
+                .ok_or("argument \"df\" is missing, with no default")?,
             ncp,
             args.log
-                .expect("argument \"log\" is missing, with no default"),
+                .ok_or("argument \"log\" is missing, with no default")?,
         ),
     }
 }

@@ -127,7 +127,6 @@ mod audit_regression_tests {
             max_relative = 1e-8
         );
     }
-
 }
 
 #[cfg(test)]
@@ -319,7 +318,6 @@ mod variance_model_tests {
         assert!(above > two_sided);
         assert!(below < two_sided);
     }
-
 }
 
 #[cfg(test)]
@@ -1015,7 +1013,6 @@ mod r_basic_calculations {
         m1 / m0
     }
 
-
     // ── Binomial tests ─────────────────────────────────────────────────
 
     #[test]
@@ -1540,5 +1537,123 @@ mod normalization_tests {
         let prior: Prior = PointPrior::new(0.0).into();
         let integral = prior.integral().unwrap();
         assert_relative_eq!(integral, 1.0, epsilon = 1e-10);
+    }
+}
+
+#[cfg(test)]
+mod invalid_input_tests {
+    //! Invalid parameters must be reported by `validate()` and surface as
+    //! errors (never panics or silent zeros) from integration.
+    use crate::prelude::*;
+
+    fn normal_likelihood() -> Likelihood {
+        NormalLikelihood::new(0.5, 0.2).into()
+    }
+
+    #[test]
+    fn reversed_and_nan_prior_ranges_are_invalid() {
+        let priors: [Prior; 8] = [
+            NormalPrior::new(0.0, 1.0, (Some(5.0), Some(1.0))).into(),
+            CauchyPrior::new(0.0, 1.0, (Some(5.0), Some(1.0))).into(),
+            StudentTPrior::new(0.0, 1.0, 3.0, (Some(5.0), Some(1.0))).into(),
+            NormalPrior::new(0.0, 1.0, (Some(f64::NAN), Some(1.0))).into(),
+            CauchyPrior::new(0.0, 1.0, (None, Some(f64::NAN))).into(),
+            UniformPrior::new(f64::NAN, 1.0).into(),
+            UniformPrior::new(f64::NEG_INFINITY, f64::INFINITY).into(),
+            UniformPrior::new(0.0, f64::INFINITY).into(),
+        ];
+        for prior in priors {
+            assert!(prior.validate().is_err(), "{prior:?} validated");
+            assert!(
+                matches!(
+                    (normal_likelihood() * prior).integral(),
+                    Err(IntegralError::Prior(_))
+                ),
+                "{prior:?} integrated"
+            );
+            assert!(prior.integral().is_err(), "{prior:?} prior integrated");
+        }
+    }
+
+    #[test]
+    fn non_finite_prior_parameters_are_invalid() {
+        let priors: [Prior; 6] = [
+            NormalPrior::new(0.0, f64::NAN, (None, None)).into(),
+            NormalPrior::new(0.0, f64::INFINITY, (None, None)).into(),
+            NormalPrior::new(f64::NAN, 1.0, (None, None)).into(),
+            CauchyPrior::new(0.0, f64::INFINITY, (None, None)).into(),
+            CauchyPrior::new(f64::INFINITY, 1.0, (None, None)).into(),
+            StudentTPrior::new(0.0, f64::NAN, 3.0, (None, None)).into(),
+        ];
+        for prior in priors {
+            assert!(prior.validate().is_err(), "{prior:?} validated");
+            assert!(prior.integral().is_err(), "{prior:?} prior integrated");
+        }
+    }
+
+    #[test]
+    fn invalid_priors_and_bounds_do_not_panic_when_integrated() {
+        let prior: Prior = NormalPrior::new(0.0, -1.0, (None, None)).into();
+        assert!(matches!(prior.integral(), Err(IntegralError::Prior(_))));
+
+        // Bounds outside the beta's support are clamped to it.
+        let beta: Prior = BetaPrior::new(2.0, 2.0, (None, None)).into();
+        let mass = beta.integrate(Some(-1.0), Some(2.0)).unwrap();
+        assert!((mass - 1.0).abs() < 1e-10);
+        assert!(matches!(
+            beta.integrate(Some(0.8), Some(0.2)),
+            Err(IntegralError::InvalidBounds(..))
+        ));
+    }
+
+    #[test]
+    fn negative_and_fractional_successes_are_invalid() {
+        for successes in [-1.0, 2.5, 11.0, f64::NAN] {
+            let likelihood = BinomialLikelihood::new(successes, 10.0);
+            assert!(likelihood.validate().is_err(), "successes={successes}");
+            assert!(likelihood.function(0.3).is_err(), "successes={successes}");
+        }
+        assert!(BinomialLikelihood::new(0.0, 10.0).validate().is_ok());
+    }
+
+    #[test]
+    fn effect_size_likelihoods_need_at_least_one_degree_of_freedom() {
+        let likelihoods: [Likelihood; 5] = [
+            NoncentralDLikelihood::new(0.5, 1.0).into(),
+            NoncentralDLikelihood::new(0.5, f64::NAN).into(),
+            NoncentralD2Likelihood::new(0.5, 1.0, 1.0).into(),
+            NoncentralD2Likelihood::new(0.5, f64::NAN, 10.0).into(),
+            NoncentralTLikelihood::new(0.5, f64::NAN).into(),
+        ];
+        let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
+        for likelihood in likelihoods {
+            assert!(likelihood.validate().is_err(), "{likelihood:?} validated");
+            assert!(
+                matches!(
+                    (likelihood * prior).integral(),
+                    Err(IntegralError::Likelihood(_))
+                ),
+                "{likelihood:?} integrated"
+            );
+        }
+        assert!(NoncentralDLikelihood::new(0.5, 2.0).validate().is_ok());
+        assert!(
+            NoncentralD2Likelihood::new(0.5, 1.0, 2.0)
+                .validate()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn nan_scale_likelihoods_are_invalid() {
+        let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+        for likelihood in [
+            Likelihood::from(NormalLikelihood::new(0.5, f64::NAN)),
+            StudentTLikelihood::new(0.5, f64::NAN, 10.0).into(),
+            StudentTLikelihood::new(0.5, 1.0, f64::NAN).into(),
+        ] {
+            assert!(likelihood.validate().is_err(), "{likelihood:?} validated");
+            assert!((likelihood * prior).integral().is_err());
+        }
     }
 }
