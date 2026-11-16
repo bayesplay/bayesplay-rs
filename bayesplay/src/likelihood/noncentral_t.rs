@@ -1,4 +1,3 @@
-use rmath::dt;
 use serde::{Deserialize, Serialize};
 
 use super::{LikelihoodError, Observation};
@@ -84,8 +83,7 @@ impl NoncentralTLikelihood {
 /// ```
 impl LogFunction<LikelihoodError> for NoncentralTLikelihood {
     fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
-        dt!(x = self.t, df = self.df, ncp = x, log = true)
-            .map_err(LikelihoodError::DistributionError)
+        rmath::dnt(self.t, self.df, x, true).map_err(LikelihoodError::DistributionError)
     }
 }
 

@@ -1,6 +1,3 @@
-use rmath::dcauchy;
-use rmath::pcauchy;
-
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
@@ -166,14 +163,8 @@ impl Normalize for CauchyPrior {
     fn ln_normalize(&self) -> Result<f64, PriorError> {
         let (lower, upper) = self.range_or_default();
         let ln_mass = truncated_ln_normalization(lower, upper, |x, lower_tail| {
-            pcauchy!(
-                q = x,
-                location = self.location,
-                scale = self.scale,
-                lower_tail = lower_tail,
-                log_p = true
-            )
-            .map_err(PriorError::DistributionError)
+            rmath::pcauchy(x, self.location, self.scale, lower_tail, true)
+                .map_err(PriorError::DistributionError)
         })?;
         if ln_mass.is_nan() || ln_mass == f64::NEG_INFINITY {
             return Err(PriorError::NormalizingError);
@@ -204,13 +195,8 @@ impl Normalize for CauchyPrior {
 /// ```
 impl PriorDensity for CauchyPrior {
     fn ln_density(&self, x: f64, ln_normalizer: f64) -> Result<f64, PriorError> {
-        let log_density = dcauchy!(
-            x = x,
-            location = self.location,
-            scale = self.scale,
-            log = true
-        )
-        .map_err(PriorError::DistributionError)?;
+        let log_density = rmath::dcauchy(x, self.location, self.scale, true)
+            .map_err(PriorError::DistributionError)?;
         let (lower, upper) = self.range_or_default();
         if !(lower..=upper).contains(&x) {
             return Ok(f64::NEG_INFINITY);

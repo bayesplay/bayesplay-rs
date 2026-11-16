@@ -1,35 +1,9 @@
 use statrs::distribution::{ChiSquared, Continuous};
 
-pub struct Dchisq {
-    pub x: Option<f64>,
-    pub df: Option<f64>,
-    pub log: Option<bool>,
-}
-
-impl Default for Dchisq {
-    fn default() -> Self {
-        Self {
-            x: None,
-            df: None,
-            log: Some(false),
-        }
-    }
-}
-
 pub fn dchisq(x: f64, df: f64, log: bool) -> Result<f64, &'static str> {
     let dist = ChiSquared::new(df).map_err(|_| "Error creating Chi-squared distribution")?;
     let log_density = dist.ln_pdf(x);
     Ok(if log { log_density } else { log_density.exp() })
-}
-
-pub fn safe_dchisq(args: Dchisq) -> Result<f64, &'static str> {
-    dchisq(
-        args.x.ok_or("argument \"x\" is missing, with no default")?,
-        args.df
-            .ok_or("argument \"df\" is missing, with no default")?,
-        args.log
-            .ok_or("argument \"log\" is missing, with no default")?,
-    )
 }
 
 #[cfg(test)]

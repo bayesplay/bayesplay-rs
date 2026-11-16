@@ -1,4 +1,3 @@
-use rmath::dt;
 use serde::{Deserialize, Serialize};
 
 use super::{LikelihoodError, Observation};
@@ -108,7 +107,7 @@ impl LogFunction<LikelihoodError> for NoncentralD2Likelihood {
     fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
         let sqrt_n = self.effective_n().sqrt();
         let df = self.n1 + self.n2 - 2.0;
-        dt!(x = self.d * sqrt_n, df = df, ncp = x * sqrt_n, log = true)
+        rmath::dnt(self.d * sqrt_n, df, x * sqrt_n, true)
             .map_err(LikelihoodError::DistributionError)
     }
 }

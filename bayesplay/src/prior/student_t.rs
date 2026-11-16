@@ -1,6 +1,3 @@
-use rmath::dt_scaled;
-use rmath::pt_scaled;
-
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
@@ -161,14 +158,8 @@ impl Validate<PriorError> for StudentTPrior {
 /// ```
 impl PriorDensity for StudentTPrior {
     fn ln_density(&self, x: f64, ln_normalizer: f64) -> Result<f64, PriorError> {
-        let log_density = dt_scaled!(
-            x = x,
-            mean = self.mean,
-            sd = self.sd,
-            df = self.df,
-            log = true
-        )
-        .map_err(PriorError::DistributionError)?;
+        let log_density = rmath::dt_scaled(x, self.mean, self.sd, self.df, true)
+            .map_err(PriorError::DistributionError)?;
         let (lower, upper) = self.range_or_default();
         if !(lower..=upper).contains(&x) {
             return Ok(f64::NEG_INFINITY);
@@ -203,15 +194,8 @@ impl Normalize for StudentTPrior {
     fn ln_normalize(&self) -> Result<f64, PriorError> {
         let (lower, upper) = self.range_or_default();
         let ln_mass = truncated_ln_normalization(lower, upper, |x, lower_tail| {
-            pt_scaled!(
-                q = x,
-                mean = self.mean,
-                sd = self.sd,
-                df = self.df,
-                lower_tail = lower_tail,
-                log_p = true
-            )
-            .map_err(PriorError::DistributionError)
+            rmath::pt_scaled(x, self.mean, self.sd, self.df, lower_tail, true)
+                .map_err(PriorError::DistributionError)
         })?;
         if ln_mass.is_nan() || ln_mass == f64::NEG_INFINITY {
             return Err(PriorError::NormalizingError);

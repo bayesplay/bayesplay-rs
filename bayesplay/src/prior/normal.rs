@@ -1,7 +1,3 @@
-use rmath::dnorm;
-
-use rmath::pnorm;
-
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
@@ -184,14 +180,8 @@ impl Normalize for NormalPrior {
     fn ln_normalize(&self) -> Result<f64, PriorError> {
         let (lower, upper) = self.range_or_default();
         let ln_mass = truncated_ln_normalization(lower, upper, |x, lower_tail| {
-            pnorm!(
-                q = x,
-                mean = self.mean,
-                sd = self.sd,
-                lower_tail = lower_tail,
-                log_p = true
-            )
-            .map_err(PriorError::DistributionError)
+            rmath::pnorm(x, self.mean, self.sd, lower_tail, true)
+                .map_err(PriorError::DistributionError)
         })?;
         if ln_mass.is_nan() || ln_mass == f64::NEG_INFINITY {
             return Err(PriorError::NormalizingError);
@@ -249,8 +239,8 @@ impl Normalize for NormalPrior {
 /// ```
 impl PriorDensity for NormalPrior {
     fn ln_density(&self, x: f64, ln_normalizer: f64) -> Result<f64, PriorError> {
-        let log_density = dnorm!(x = x, mean = self.mean, sd = self.sd, log = true)
-            .map_err(PriorError::DistributionError)?;
+        let log_density =
+            rmath::dnorm(x, self.mean, self.sd, true).map_err(PriorError::DistributionError)?;
         let (lower, upper) = self.range_or_default();
         if !(lower..=upper).contains(&x) {
             return Ok(f64::NEG_INFINITY);
@@ -340,7 +330,7 @@ mod tests {
         {
             let prior = NormalPrior::new(0.0, 1.0, (Some(-1.0), None));
             let norm = prior.normalize().unwrap();
-            let expected = pnorm!(q = -1.0, mean = 0.0, sd = 1.0, lower_tail = false).unwrap();
+            let expected = rmath::pnorm(-1.0, 0.0, 1.0, false, false).unwrap();
             assert_relative_eq!(norm, expected, epsilon = 1e-10);
         }
 
@@ -348,7 +338,7 @@ mod tests {
         {
             let prior = NormalPrior::new(0.0, 1.0, (None, Some(1.0)));
             let norm = prior.normalize().unwrap();
-            let expected = pnorm!(q = 1.0, mean = 0.0, sd = 1.0, lower_tail = true).unwrap();
+            let expected = rmath::pnorm(1.0, 0.0, 1.0, true, false).unwrap();
             assert_relative_eq!(norm, expected, epsilon = 1e-10);
         }
 

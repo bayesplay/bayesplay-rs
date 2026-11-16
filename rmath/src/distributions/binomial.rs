@@ -1,44 +1,5 @@
 use statrs::distribution::{Discrete, DiscreteCDF};
 
-#[derive(Debug)]
-pub struct Dbinom {
-    pub x: Option<f64>,
-    pub size: Option<f64>,
-    pub prob: Option<f64>,
-    pub log: Option<bool>,
-}
-
-impl Default for Dbinom {
-    fn default() -> Self {
-        Dbinom {
-            x: None,
-            size: None,
-            prob: None,
-            log: Some(false),
-        }
-    }
-}
-
-pub struct Pbinom {
-    pub q: Option<f64>,
-    pub size: Option<f64>,
-    pub prob: Option<f64>,
-    pub lower_tail: Option<bool>,
-    pub log_p: Option<bool>,
-}
-
-impl Default for Pbinom {
-    fn default() -> Self {
-        Pbinom {
-            q: None,
-            size: None,
-            prob: None,
-            lower_tail: Some(true),
-            log_p: Some(false),
-        }
-    }
-}
-
 fn binomial(size: f64, prob: f64) -> Result<statrs::distribution::Binomial, &'static str> {
     // `as u64` would silently truncate (or saturate) a non-integer or negative size.
     if !(size >= 0.0 && size.fract() == 0.0 && size <= u64::MAX as f64) {
@@ -62,19 +23,6 @@ pub fn dbinom(x: f64, size: f64, prob: f64, log: bool) -> Result<f64, &'static s
     })
 }
 
-#[allow(dead_code)]
-pub fn safe_dbinom(args: Dbinom) -> Result<f64, &'static str> {
-    dbinom(
-        args.x.ok_or("argument \"x\" is missing, with no default")?,
-        args.size
-            .ok_or("argument \"size\" is missing, with no default")?,
-        args.prob
-            .ok_or("argument \"prob\" is missing, with no default")?,
-        args.log
-            .ok_or("argument \"log\" is missing, with no default")?,
-    )
-}
-
 pub fn pbinom(
     x: f64,
     size: f64,
@@ -93,21 +41,6 @@ pub fn pbinom(
     };
     let p = if lower_tail { cdf } else { sf };
     Ok(if log_p { p.ln() } else { p })
-}
-
-#[allow(dead_code)]
-pub fn safe_pbinom(args: Pbinom) -> Result<f64, &'static str> {
-    pbinom(
-        args.q.ok_or("argument \"q\" is missing, with no default")?,
-        args.size
-            .ok_or("argument \"size\" is missing, with no default")?,
-        args.prob
-            .ok_or("argument \"prob\" is missing, with no default")?,
-        args.lower_tail
-            .ok_or("argument \"lower_tail\" is missing, with no default")?,
-        args.log_p
-            .ok_or("argument \"log_p\" is missing, with no default")?,
-    )
 }
 
 #[cfg(test)]

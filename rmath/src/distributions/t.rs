@@ -34,9 +34,9 @@ pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static st
 
     let mixture = NoncentralTMixture::new(x, df, ncp);
     // Integrate directly where the pnt() difference below cannot be used:
-    // - pnt() falls back to a normal approximation, so the difference is not a
+    // * pnt() falls back to a normal approximation, so the difference is not a
     //   density at all (e.g. log dnt(30, 19, 45) was off by 0.27);
-    // - the density is clearly below the cancellation threshold (by a cheap
+    // * the density is clearly below the cancellation threshold (by a cheap
     //   Laplace estimate), so the two pnt() series would only be discarded.
     // Misjudging the second case only costs time: tiny pnt()-based values are
     // still caught and recomputed below.
@@ -138,25 +138,25 @@ impl NoncentralTMixture {
 
     /// The log density by quadrature.
     fn integrate(&self) -> Option<f64> {
-        use crate::integration::{Integrate, integratewrapper};
+        use crate::integration::Quadrature;
 
         let width = self.curvature.sqrt().recip();
-        let result = integratewrapper(Integrate {
-            f: Some(|s: f64| {
-                if s <= 0.0 {
-                    0.0
-                } else {
-                    (self.log_integrand(s) - self.peak).exp()
-                }
-            }),
-            lower: Some((self.mode - 40.0 * width).max(0.0)),
-            upper: Some(self.mode + 40.0 * width),
-            points: Some(vec![self.mode]),
+        let result = Quadrature {
+            lower: (self.mode - 40.0 * width).max(0.0),
+            upper: self.mode + 40.0 * width,
+            points: vec![self.mode],
             // integrand is scaled to a peak of 1, so abs_tol is effectively relative too;
             // a purely relative tolerance trips the roundoff detector on the ~0 tails
             abs_tol: 1e-13,
             rel_tol: 1e-10,
             ..Default::default()
+        }
+        .integrate(|s: f64| {
+            if s <= 0.0 {
+                0.0
+            } else {
+                (self.log_integrand(s) - self.peak).exp()
+            }
         })
         .ok()?;
         (result.value > 0.0 && result.value.is_finite()).then(|| self.peak + result.value.ln())
@@ -303,7 +303,7 @@ pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f
     }
 }
 
-fn dt(x: f64, df: f64, log_p: bool) -> Result<f64, &'static str> {
+pub fn dt(x: f64, df: f64, log_p: bool) -> Result<f64, &'static str> {
     let dist = StudentsT::new(0.0, 1.0, df).map_err(|_| "Error creating Student t distribution")?;
     match log_p {
         true => Ok(dist.ln_pdf(x)),
@@ -311,7 +311,7 @@ fn dt(x: f64, df: f64, log_p: bool) -> Result<f64, &'static str> {
     }
 }
 
-fn pt(q: f64, df: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
+pub fn pt(q: f64, df: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
     let dist = StudentsT::new(0.0, 1.0, df).map_err(|_| "Error creating Student t distribution")?;
     // Only one tail is evaluated per call. In log space the tail that is
     // close to 1 is taken as ln_1p(-other tail) to avoid cancellation.
@@ -366,180 +366,22 @@ fn r_d_clog(log_p: bool, p: f64) -> f64 {
     }
 }
 
-pub struct Dt {
-    pub x: Option<f64>,
-    pub df: Option<f64>,
-    pub ncp: Option<f64>,
-    pub log: Option<bool>,
+/// Distribution function of a location-scale t: `X = mean + sd * T`, `T ~ t(df)`.
+pub fn pt_scaled(
+    q: f64,
+    mean: f64,
+    sd: f64,
+    df: f64,
+    lower_tail: bool,
+    log_p: bool,
+) -> Result<f64, &'static str> {
+    pt((q - mean) / sd, df, lower_tail, log_p)
 }
 
-impl Default for Dt {
-    fn default() -> Self {
-        Dt {
-            x: None,
-            df: None,
-            ncp: None,
-            log: Some(false),
-        }
-    }
-}
-
-pub struct Pt {
-    pub q: Option<f64>,
-    pub df: Option<f64>,
-    pub ncp: Option<f64>,
-    pub lower_tail: Option<bool>,
-    pub log_p: Option<bool>,
-}
-
-impl Default for Pt {
-    fn default() -> Self {
-        Pt {
-            q: None,
-            df: None,
-            ncp: None,
-            lower_tail: Some(true),
-            log_p: Some(false),
-        }
-    }
-}
-
-pub struct DtScaled {
-    pub x: Option<f64>,
-    pub df: Option<f64>,
-    pub mean: Option<f64>,
-    pub sd: Option<f64>,
-    pub ncp: Option<f64>,
-    pub log: Option<bool>,
-}
-
-impl Default for DtScaled {
-    fn default() -> Self {
-        DtScaled {
-            x: None,
-            df: None,
-            mean: Some(0.0),
-            sd: Some(1.0),
-            ncp: None,
-            log: Some(false),
-        }
-    }
-}
-
-pub struct PtScaled {
-    pub q: Option<f64>,
-    pub df: Option<f64>,
-    pub mean: Option<f64>,
-    pub sd: Option<f64>,
-    pub ncp: Option<f64>,
-    pub lower_tail: Option<bool>,
-    pub log_p: Option<bool>,
-}
-
-impl Default for PtScaled {
-    fn default() -> Self {
-        PtScaled {
-            q: None,
-            df: None,
-            mean: Some(0.0),
-            sd: Some(1.0),
-            ncp: None,
-            lower_tail: Some(true),
-            log_p: Some(false),
-        }
-    }
-}
-
-pub fn pt_scaled(args: PtScaled) -> Result<f64, &'static str> {
-    let mean = args
-        .mean
-        .ok_or("argument \"mean\" is missing, with no default")?;
-    let sd = args
-        .sd
-        .ok_or("argument \"sd\" is missing, with no default")?;
-    let df = args
-        .df
-        .ok_or("argument \"df\" is missing, with no default")?;
-    let q = args.q.ok_or("argument \"q\" is missing, with no default")?;
-    let q = (q - mean) / sd;
-    let lower_tail = args
-        .lower_tail
-        .ok_or("argument \"lower_tail\" is missing, with no default")?;
-    let log_p = args
-        .log_p
-        .ok_or("argument \"log_p\" is missing, with no default")?;
-    match args.ncp {
-        Some(ncp) => pnt(q, df, ncp, lower_tail, log_p),
-        None => pt(q, df, lower_tail, log_p),
-    }
-}
-
-pub fn dt_scaled(args: DtScaled) -> Result<f64, &'static str> {
-    let mean = args
-        .mean
-        .ok_or("argument \"mean\" is missing, with no default")?;
-    let sd = args
-        .sd
-        .ok_or("argument \"sd\" is missing, with no default")?;
-    let df = args
-        .df
-        .ok_or("argument \"df\" is missing, with no default")?;
-    let x = args.x.ok_or("argument \"x\" is missing, with no default")?;
-    let x = (x - mean) / sd;
-    let log = args
-        .log
-        .ok_or("argument \"log\" is missing, with no default")?;
-    let density = match args.ncp {
-        Some(ncp) => dnt(x, df, ncp, log)?,
-        None => dt(x, df, log)?,
-    };
+/// Density of a location-scale t: `X = mean + sd * T`, `T ~ t(df)`.
+pub fn dt_scaled(x: f64, mean: f64, sd: f64, df: f64, log: bool) -> Result<f64, &'static str> {
+    let density = dt((x - mean) / sd, df, log)?;
     Ok(if log { density - sd.ln() } else { density / sd })
-}
-
-pub fn safe_dt(args: Dt) -> Result<f64, &'static str> {
-    match args.ncp {
-        None => dt(
-            args.x.ok_or("argument \"x\" is missing, with no default")?,
-            args.df
-                .ok_or("argument \"df\" is missing, with no default")?,
-            args.log
-                .ok_or("argument \"log\" is missing, with no default")?,
-        ),
-
-        Some(ncp) => dnt(
-            args.x.ok_or("argument \"x\" is missing, with no default")?,
-            args.df
-                .ok_or("argument \"df\" is missing, with no default")?,
-            ncp,
-            args.log
-                .ok_or("argument \"log\" is missing, with no default")?,
-        ),
-    }
-}
-
-pub fn safe_pt(args: Pt) -> Result<f64, &'static str> {
-    match args.ncp {
-        None => pt(
-            args.q.ok_or("argument \"q\" is missing, with no default")?,
-            args.df
-                .ok_or("argument \"df\" is missing, with no default")?,
-            args.lower_tail
-                .ok_or("argument \"lower_tail\" is missing, with no default")?,
-            args.log_p
-                .ok_or("argument \"log_p\" is missing, with no default")?,
-        ),
-
-        Some(ncp) => pnt(
-            args.q.ok_or("argument \"q\" is missing, with no default")?,
-            args.df
-                .ok_or("argument \"df\" is missing, with no default")?,
-            ncp,
-            args.lower_tail
-                .ok_or("argument \"lower_tail\" is missing, with no default")?,
-            args.log_p
-                .ok_or("argument \"log_p\" is missing, with no default")?,
-        ),
-    }
 }
 
 // write some tests
@@ -596,37 +438,17 @@ mod tests {
     }
 
     #[test]
-    fn scaled_helpers_preserve_noncentrality_and_log_jacobian() {
-        for ncp in [None, Some(0.0), Some(2.0)] {
-            let expected = dnt(0.5, 7.0, ncp.unwrap_or(0.0), false).unwrap() / 3.0;
-            for log in [false, true] {
-                let got = dt_scaled(DtScaled {
-                    x: Some(5.5),
-                    df: Some(7.0),
-                    mean: Some(4.0),
-                    sd: Some(3.0),
-                    ncp,
-                    log: Some(log),
-                })
-                .unwrap();
-                let want = if log { expected.ln() } else { expected };
-                assert!((got - want).abs() < 1e-12);
-            }
-            for lower_tail in [false, true] {
-                for log_p in [false, true] {
-                    let got = pt_scaled(PtScaled {
-                        q: Some(5.5),
-                        df: Some(7.0),
-                        mean: Some(4.0),
-                        sd: Some(3.0),
-                        ncp,
-                        lower_tail: Some(lower_tail),
-                        log_p: Some(log_p),
-                    })
-                    .unwrap();
-                    let want = pnt(0.5, 7.0, ncp.unwrap_or(0.0), lower_tail, log_p).unwrap();
-                    assert_eq!(got, want);
-                }
+    fn scaled_helpers_apply_location_scale_and_log_jacobian() {
+        let expected = dt(0.5, 7.0, false).unwrap() / 3.0;
+        for log in [false, true] {
+            let got = dt_scaled(5.5, 4.0, 3.0, 7.0, log).unwrap();
+            let want = if log { expected.ln() } else { expected };
+            assert!((got - want).abs() < 1e-12);
+        }
+        for lower_tail in [false, true] {
+            for log_p in [false, true] {
+                let got = pt_scaled(5.5, 4.0, 3.0, 7.0, lower_tail, log_p).unwrap();
+                assert_eq!(got, pt(0.5, 7.0, lower_tail, log_p).unwrap());
             }
         }
     }

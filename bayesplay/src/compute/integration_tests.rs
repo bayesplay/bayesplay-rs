@@ -12,7 +12,6 @@
 mod audit_regression_tests {
     use crate::prelude::*;
     use approx::assert_relative_eq;
-    use rmath::integrate;
     use statrs::distribution::{Continuous, StudentsT};
 
     #[test]
@@ -54,10 +53,10 @@ mod audit_regression_tests {
                     .sum()
             } else {
                 // Quadrature samples the supported open interval, not invalid endpoints.
-                integrate!(
-                    f = move |x| predictive.function(x).unwrap(),
-                    lower = lower,
-                    upper = f64::INFINITY
+                rmath::integrate(
+                    move |x| predictive.function(x).unwrap(),
+                    lower,
+                    f64::INFINITY,
                 )
                 .unwrap()
                 .value
@@ -112,11 +111,12 @@ mod audit_regression_tests {
             beta.function(r / (1.0 + r)).unwrap() / (1.0 + r).powi(2),
             epsilon = 1e-12
         );
-        let transformed = integrate!(
-            f = move |rho| likelihood.function(rho / (1.0 - rho)).unwrap()
-                * beta.function(rho).unwrap(),
-            lower = 0.0,
-            upper = 1.0
+        let transformed = rmath::integrate(
+            move |rho| {
+                likelihood.function(rho / (1.0 - rho)).unwrap() * beta.function(rho).unwrap()
+            },
+            0.0,
+            1.0,
         )
         .unwrap()
         .value;
@@ -462,7 +462,6 @@ mod model_construction_tests {
 
     use crate::prelude::*;
     use approx::assert_relative_eq;
-    use rmath::integrate;
 
     #[test]
     fn test_likelihood_times_prior() {
@@ -544,9 +543,15 @@ mod model_construction_tests {
 
         let marginal = model.integral().unwrap();
 
-        let exact = integrate!(f = move |x| model.function(x).unwrap(), points = vec![2.0])
-            .unwrap()
-            .value;
+        let exact = rmath::Quadrature {
+            lower: f64::NEG_INFINITY,
+            upper: f64::INFINITY,
+            points: vec![2.0],
+            ..Default::default()
+        }
+        .integrate(move |x| model.function(x).unwrap())
+        .unwrap()
+        .value;
 
         assert!(marginal.value.is_finite());
         assert!(marginal.value > 0.0);
@@ -590,13 +595,9 @@ mod model_construction_tests {
 
         let marginal = model.integral().unwrap().value;
 
-        let exact = integrate!(
-            f = move |x| model.function(x).unwrap(),
-            lower = 0.0,
-            upper = 0.15
-        )
-        .unwrap()
-        .value;
+        let exact = rmath::integrate(move |x| model.function(x).unwrap(), 0.0, 0.15)
+            .unwrap()
+            .value;
 
         assert_relative_eq!(marginal, exact, max_relative = 1e-8);
     }

@@ -1,5 +1,3 @@
-use rmath::dt;
-
 use serde::{Deserialize, Serialize};
 
 use super::{LikelihoodError, Observation};
@@ -153,9 +151,6 @@ impl LogFunction<LikelihoodError> for StudentTLikelihood {
     fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
         // The density is symmetric in (observation, parameter).
         let z = (self.mean - x) / self.sd;
-        Ok(
-            dt!(x = z, df = self.df, log = true).map_err(LikelihoodError::DistributionError)?
-                - self.sd.ln(),
-        )
+        Ok(rmath::dt(z, self.df, true).map_err(LikelihoodError::DistributionError)? - self.sd.ln())
     }
 }

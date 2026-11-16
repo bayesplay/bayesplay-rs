@@ -1,4 +1,3 @@
-use rmath::dunif;
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
@@ -105,8 +104,7 @@ impl Range for UniformPrior {
 /// ```
 impl PriorDensity for UniformPrior {
     fn ln_density(&self, x: f64, _ln_normalizer: f64) -> Result<f64, PriorError> {
-        dunif!(x = x, min = self.min, max = self.max, log = true)
-            .map_err(PriorError::DistributionError)
+        rmath::dunif(x, self.min, self.max, true).map_err(PriorError::DistributionError)
     }
 }
 

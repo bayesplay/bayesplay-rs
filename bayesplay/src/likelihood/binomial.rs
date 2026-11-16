@@ -1,5 +1,3 @@
-use rmath::dbinom;
-
 use serde::{Deserialize, Serialize};
 
 use crate::common::LogFunction;
@@ -97,7 +95,7 @@ impl LogFunction<LikelihoodError> for BinomialLikelihood {
         if !(0.0..=1.0).contains(&p) {
             return Err(LikelihoodError::InvalidProbability(p));
         }
-        dbinom!(prob = p, size = self.trials, x = self.successes, log = true)
+        rmath::dbinom(self.successes, self.trials, p, true)
             .map_err(LikelihoodError::DistributionError)
     }
 }

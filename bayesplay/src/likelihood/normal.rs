@@ -1,4 +1,3 @@
-use rmath::dnorm;
 use serde::{Deserialize, Serialize};
 
 /// A normal likelihood function with specified mean and standard error.
@@ -125,8 +124,7 @@ impl LogFunction<LikelihoodError> for NormalLikelihood {
     fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
         self.validate()?;
         // Density of the observed mean given the parameter x.
-        dnorm!(x = self.mean, mean = x, sd = self.se, log = true)
-            .map_err(LikelihoodError::DistributionError)
+        rmath::dnorm(self.mean, x, self.se, true).map_err(LikelihoodError::DistributionError)
     }
 }
 

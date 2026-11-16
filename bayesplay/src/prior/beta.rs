@@ -1,5 +1,4 @@
 use crate::common::truncated_normalization;
-use rmath::{dbeta, pbeta};
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -186,8 +185,8 @@ impl PriorDensity for BetaPrior {
         if !(lower..=upper).contains(&x) {
             return Ok(f64::NEG_INFINITY);
         }
-        let log_density = dbeta!(x = x, shape1 = self.alpha, shape2 = self.beta, log = true)
-            .map_err(PriorError::DistributionError)?;
+        let log_density =
+            rmath::dbeta(x, self.alpha, self.beta, true).map_err(PriorError::DistributionError)?;
         Ok(log_density - ln_normalizer)
     }
 }
@@ -198,13 +197,8 @@ impl Normalize for BetaPrior {
         self.validate()?;
         let (lower, upper) = self.range_or_default();
         let mass = truncated_normalization(lower, upper, |q, lower_tail| {
-            pbeta!(
-                q = q,
-                shape1 = self.alpha,
-                shape2 = self.beta,
-                lower_tail = lower_tail
-            )
-            .map_err(PriorError::DistributionError)
+            rmath::pbeta(q, self.alpha, self.beta, lower_tail, false)
+                .map_err(PriorError::DistributionError)
         })?;
         if !mass.is_finite() || mass <= 0.0 {
             return Err(PriorError::NormalizingError);

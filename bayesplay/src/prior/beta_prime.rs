@@ -1,4 +1,4 @@
-use rmath::{lbeta, pbeta};
+use rmath::lbeta;
 use serde::{Deserialize, Serialize};
 
 use super::{Normalize, PriorDensity, PriorError, validate_positive_range};
@@ -41,13 +41,8 @@ impl BetaPrimePrior {
                     1.0 - lower_probability
                 }
             } else {
-                pbeta!(
-                    q = rho,
-                    shape1 = self.alpha,
-                    shape2 = self.alpha,
-                    lower_tail = beta_lower_tail
-                )
-                .map_err(PriorError::DistributionError)?
+                rmath::pbeta(rho, self.alpha, self.alpha, beta_lower_tail, false)
+                    .map_err(PriorError::DistributionError)?
             }
         };
         Ok(probability)

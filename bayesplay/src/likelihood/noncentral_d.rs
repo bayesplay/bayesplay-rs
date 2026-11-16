@@ -1,4 +1,3 @@
-use rmath::dt;
 use serde::{Deserialize, Serialize};
 
 /// A noncentral d likelihood for one-sample effect sizes (Cohen's d).
@@ -97,13 +96,8 @@ impl NoncentralDLikelihood {
 impl LogFunction<LikelihoodError> for NoncentralDLikelihood {
     fn ln_function(&self, x: f64) -> Result<f64, LikelihoodError> {
         let sqrt_n = self.n.sqrt();
-        dt!(
-            x = self.d * sqrt_n,
-            df = self.n - 1.0,
-            ncp = x * sqrt_n,
-            log = true
-        )
-        .map_err(LikelihoodError::DistributionError)
+        rmath::dnt(self.d * sqrt_n, self.n - 1.0, x * sqrt_n, true)
+            .map_err(LikelihoodError::DistributionError)
     }
 }
 

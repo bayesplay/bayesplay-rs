@@ -5,9 +5,7 @@
 
 use std::ops::Mul;
 
-use rmath::integration::{
-    Integrate as Quadrature, IntegrationError, ToleranceMode, integratewrapper,
-};
+use rmath::{IntegrationError, Quadrature, ToleranceMode};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -437,19 +435,19 @@ where
 
     let mut error = None;
     let mut integrate_piece = |a: f64, b: f64, abs_tol: f64, tolerance: ToleranceMode| {
-        let result = integratewrapper(Quadrature {
-            f: Some(|x: f64| match ln_f(x) {
-                Ok(value) => (value - scale).exp(),
-                Err(e) => {
-                    error.get_or_insert(e);
-                    f64::NAN
-                }
-            }),
-            lower: Some(a),
-            upper: Some(b),
+        let result = Quadrature {
+            lower: a,
+            upper: b,
             abs_tol,
             tolerance,
             ..Default::default()
+        }
+        .integrate(|x: f64| match ln_f(x) {
+            Ok(value) => (value - scale).exp(),
+            Err(e) => {
+                error.get_or_insert(e);
+                f64::NAN
+            }
         });
         match error.take() {
             Some(e) => Err(IntegralError::from(e)),
@@ -457,7 +455,7 @@ where
         }
     };
 
-    let defaults = Quadrature::<fn(f64) -> f64>::default();
+    let defaults = Quadrature::default();
     let mut core = 0.0;
     for piece in core_pieces.windows(2) {
         core += integrate_piece(piece[0], piece[1], defaults.abs_tol, ToleranceMode::Both)?;
@@ -822,8 +820,7 @@ mod tests {
             ] {
                 let likelihood: Likelihood = NormalLikelihood::new(mean, se).into();
                 let prior: Prior = NormalPrior::new(0.0, sd, (None, None)).into();
-                let want = rmath::dnorm!(x = mean, mean = 0.0, sd = f64::hypot(se, sd), log = true)
-                    .unwrap();
+                let want = rmath::dnorm(mean, 0.0, f64::hypot(se, sd), true).unwrap();
                 let got = (likelihood * prior).integral().unwrap().log_value;
                 assert!(
                     (got - want).abs() < 1e-7 * want.abs().max(1.0),
