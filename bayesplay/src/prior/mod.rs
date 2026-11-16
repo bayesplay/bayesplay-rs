@@ -53,7 +53,6 @@
 //! ```
 
 use enum_dispatch::enum_dispatch;
-use rmath::integrate;
 use thiserror::Error;
 
 pub mod beta;
@@ -70,8 +69,7 @@ use crate::common::Function;
 use crate::common::Integrate;
 use crate::common::Range;
 use crate::common::Validate;
-use crate::compute::model::IntegralError;
-use crate::likelihood::NormalLikelihood;
+use crate::compute::model::{IntegralError, integrate_kernel, requested_bounds};
 
 pub use beta::BetaPrior;
 pub use beta_prime::BetaPrimePrior;
@@ -553,52 +551,36 @@ impl TypeOf for Prior {
     }
 }
 
-impl Integrate<IntegralError, PriorError> for Prior {
-    fn integral(&self) -> Result<Auc, IntegralError> {
-        let prior = *self;
-        if prior.is_point() {
-            return Ok(Auc::new(
-                1.0,
-                NormalLikelihood::new(0.0, 1.0).into(),
-                prior,
-                None,
-            ));
-        }
-        let (lb, ub) = prior.range_or_default();
-        let f = move |x| prior.function(x).unwrap();
-        let h = integrate!(f = f, lower = lb, upper = ub);
-        match h {
-            Ok(v) => Ok(Auc::new(
-                v.value,
-                NormalLikelihood::new(0.0, 1.0).into(),
-                prior,
-                None,
-            )),
-            Err(e) => Err(IntegralError::Integration(e)),
+impl Prior {
+    /// The location and scale of the prior's peak, as `(centre, width)`, for
+    /// families whose peak can be narrow relative to their support. Used to
+    /// place integration windows.
+    pub(crate) fn peak_hint(&self) -> Option<(f64, f64)> {
+        match self {
+            Prior::Normal(p) => Some((p.mean, p.sd)),
+            Prior::Cauchy(p) => Some((p.location, p.scale)),
+            Prior::StudentT(p) => Some((p.mean, p.sd)),
+            Prior::Point(_) | Prior::Uniform(_) | Prior::Beta(_) | Prior::BetaPrime(_) => None,
         }
     }
+}
+
+impl Integrate<IntegralError, PriorError> for Prior {
+    fn integral(&self) -> Result<Auc, IntegralError> {
+        Ok(Auc::new(self.integrate(None, None)?))
+    }
+
     fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
-        let prior = *self;
-        let lb = lb.unwrap_or(prior.range_or_default().0);
-        let ub = ub.unwrap_or(prior.range_or_default().1);
-
-        if prior.is_point() {
-            let Prior::Point(point_prior) = prior else {
-                unreachable!()
-            };
-            if (lb..=ub).contains(&point_prior.point) {
-                return Ok(1.0);
+        self.validate()?;
+        let (lb, ub) = requested_bounds(lb, ub, self.range_or_default())?;
+        if let Prior::Point(point) = self {
+            return Ok(if (lb..=ub).contains(&point.point) {
+                1.0
             } else {
-                return Ok(0.0);
-            }
+                0.0
+            });
         }
-
-        let f = move |x| prior.function(x).unwrap();
-        let h = integrate!(f = f, lower = lb, upper = ub);
-        match h {
-            Ok(v) => Ok(v.value),
-            Err(e) => Err(IntegralError::Integration(e)),
-        }
+        integrate_kernel(|x| self.function(x), lb, ub, self.peak_hint())
     }
 }
 

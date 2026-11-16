@@ -3,12 +3,6 @@
 version = 4
 
 [[package]]
-name = "anyhow"
-version = "1.0.97"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcfed56ad506cb2c684a14971b8861fdc3baaaae314b9e5f9bb532cbe3ba7a4f"
-
-[[package]]
 name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -33,12 +27,12 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 name = "bayesplay"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "approx",
  "enum_dispatch",
  "itertools",
  "rmath",
  "serde",
+ "serde_json",
  "statrs",
  "thiserror 1.0.69",
 ]

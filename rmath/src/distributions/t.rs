@@ -107,8 +107,8 @@ fn dnt_by_integration(x: f64, df: f64, ncp: f64) -> Option<f64> {
         points: Some(vec![mode]),
         // integrand is scaled to a peak of 1, so abs_tol is effectively relative too;
         // a purely relative tolerance trips the roundoff detector on the ~0 tails
-        abs_tol: Some(1e-13),
-        rel_tol: Some(1e-10),
+        abs_tol: 1e-13,
+        rel_tol: 1e-10,
         ..Default::default()
     })
     .ok()?;

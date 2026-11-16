@@ -539,77 +539,68 @@ mod model_construction_tests {
     }
 
     #[test]
-    fn test_large_unbounded_cauchy_uses_split_integration() {
+    fn test_large_unbounded_cauchy_matches_direct_quadrature() {
         let likelihood: Likelihood = NoncentralDLikelihood::new(2.0, 100.0).into();
         let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
         let model = likelihood * prior;
 
-        assert!(model.is_approximation().needs_approximation());
-        let approximate = model.integral().unwrap();
+        let marginal = model.integral().unwrap();
 
-        let exact_model = model;
-        let exact = integrate!(
-            f = move |x| exact_model.function(x).unwrap(),
-            points = vec![2.0]
-        )
-        .unwrap()
-        .value;
+        let exact = integrate!(f = move |x| model.function(x).unwrap(), points = vec![2.0])
+            .unwrap()
+            .value;
 
-        assert!(approximate.is_approximation());
-        assert!(approximate.value.is_finite());
-        assert!(approximate.value > 0.0);
-        assert_relative_eq!(approximate.value, exact, epsilon = 1e-12);
+        assert!(marginal.value.is_finite());
+        assert!(marginal.value > 0.0);
+        assert_relative_eq!(marginal.value, exact, epsilon = 1e-12);
     }
 
     #[test]
-    fn test_large_noncentral_t_requests_reparameterization() {
-        let likelihood: Likelihood = NoncentralTLikelihood::new(16.0, 30.0).into();
-        let prior: Prior = CauchyPrior::new(0.0, 0.707, (None, None)).into();
-
-        let error = (likelihood * prior).integral().unwrap_err();
-
-        assert!(matches!(
-            &error,
-            IntegralError::NoncentralTReparameterization
-        ));
-        assert!(error.to_string().contains("noncentral_d likelihood with n"));
-        assert!(error
-            .to_string()
-            .contains("noncentral_d2 likelihood with n1 and n2"));
+    fn test_large_noncentral_t_matches_effect_size_parameterization() {
+        // With ncp = delta * sqrt(n), a Cauchy(0, r * sqrt(n)) prior on ncp is
+        // the same model as Cauchy(0, r) on delta, so the marginals agree.
+        let n: f64 = 34.0;
+        for (t, range) in [
+            (16.0, (None, None)),
+            (16.0, (Some(0.0), None)),
+            (-25.0, (Some(0.0), None)),
+            (20.0, (Some(-1.0), Some(1.0))),
+        ] {
+            let scale = |x: Option<f64>| x.map(|x: f64| x * n.sqrt());
+            let t_model = Likelihood::from(NoncentralTLikelihood::new(t, n - 1.0))
+                * Prior::from(CauchyPrior::new(
+                    0.0,
+                    0.707 * n.sqrt(),
+                    (scale(range.0), scale(range.1)),
+                ));
+            let d_model = Likelihood::from(NoncentralDLikelihood::new(t / n.sqrt(), n))
+                * Prior::from(CauchyPrior::new(0.0, 0.707, range));
+            assert_relative_eq!(
+                t_model.integral().unwrap().value,
+                d_model.integral().unwrap().value,
+                max_relative = 1e-7
+            );
+        }
     }
 
     #[test]
-    fn test_approximation_checks_bounds_in_effect_size_space() {
-        // d=1 is inside [-2, 2], even though the equivalent t statistic is 10.
-        let likelihood: Likelihood = NoncentralDLikelihood::new(1.0, 100.0).into();
-        let prior: Prior = CauchyPrior::new(0.0, 1.0, (Some(-2.0), Some(2.0))).into();
-
-        let approximation = (likelihood * prior).is_approximation();
-
-        assert!(!approximation.needs_approximation());
-    }
-
-    #[test]
-    fn test_approximation_uses_effect_size_scale_for_interval_correction() {
+    fn test_narrow_truncated_interval_far_from_observation() {
         let n: f64 = 1000.0;
         let likelihood: Likelihood = NoncentralDLikelihood::new(6.0 / n.sqrt(), n).into();
-        let prior: Prior =
-            CauchyPrior::new(0.05, 1.0, (Some(0.0), Some(0.15))).into();
+        let prior: Prior = CauchyPrior::new(0.05, 1.0, (Some(0.0), Some(0.15))).into();
         let model = likelihood * prior;
 
-        assert!(model.is_approximation().needs_approximation());
-        let approximate = model.integral().unwrap().value;
+        let marginal = model.integral().unwrap().value;
 
-        let exact_model = model;
         let exact = integrate!(
-            f = move |x| exact_model.function(x).unwrap(),
+            f = move |x| model.function(x).unwrap(),
             lower = 0.0,
             upper = 0.15
         )
         .unwrap()
         .value;
 
-        assert_relative_eq!(approximate, exact, epsilon = 0.001);
+        assert_relative_eq!(marginal, exact, max_relative = 1e-8);
     }
 }
 
@@ -1135,9 +1126,11 @@ mod r_basic_calculations {
 
     #[test]
     fn test_noncentral_d_negative_half_cauchy() {
-        // R: NoncentralD(-2.24, 34) + half-Cauchy(0, 0.707, [0, Inf]) vs Point(0)
-        // BF10 = 0.006773
-        // |t| = 2.24 * sqrt(34) ≈ 13.06 > 5, observation outside [0, Inf] -> approximation path
+        // NoncentralD(-2.24, 34) + half-Cauchy(0, 0.707, [0, Inf]) vs Point(0).
+        // The observed effect lies far outside the prior's interval. R bayesplay
+        // (BF01 = 147.67, via its estimate_marginal heuristic) and BayesFactor
+        // (BF01 = 1.51) are both wrong here; 35.134908074 is the high-precision
+        // reference from tests/data/bayesfactor_ttest.R.
         let likelihood: Likelihood = NoncentralDLikelihood::new(-2.24, 34.0).into();
         let cauchy_prior = CauchyPrior::new(0.0, 0.707, (Some(0.0), None));
         let alt_prior: Prior = cauchy_prior.into();
@@ -1146,7 +1139,7 @@ mod r_basic_calculations {
         let m0 = (likelihood * null_prior).integral().unwrap();
         let m1 = (likelihood * alt_prior).integral().unwrap();
         let bf = m1 / m0;
-        assert_relative_eq!(1.0 / bf, 147.666_019_341_430_88, epsilon = EPS);
+        assert_relative_eq!(1.0 / bf, 35.134_908_074_210_1, max_relative = 1e-7);
     }
 
     #[test]

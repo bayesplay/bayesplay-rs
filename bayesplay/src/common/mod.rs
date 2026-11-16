@@ -2,11 +2,6 @@ use std::ops::{Div, Sub};
 
 use approx::{AbsDiffEq, RelativeEq};
 
-use crate::{
-    prelude::{Likelihood, MarginalResult},
-    prior::Prior,
-};
-
 /// Trait for validating distribution parameters.
 ///
 /// Types implementing this trait can verify that their parameters are valid
@@ -130,50 +125,36 @@ pub trait Range {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// The area under a curve: the result of integrating a model, prior or
+/// posterior over its support.
+///
+/// For a [`Model`](crate::prelude::Model) this is the marginal likelihood, so
+/// dividing two `Auc`s gives a Bayes factor:
+///
+/// ```rust
+/// use bayesplay::prelude::*;
+///
+/// let likelihood: Likelihood = NormalLikelihood::new(0.5, 0.2).into();
+/// let h1: Auc = (likelihood * Prior::from(NormalPrior::new(0.0, 1.0, (None, None)))).integral().unwrap();
+/// let h0: Auc = (likelihood * Prior::from(PointPrior::new(0.0))).integral().unwrap();
+/// let bf10: f64 = h1 / h0;
+/// assert!(bf10 > 1.0);
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub struct Auc {
+    /// The value of the integral.
     pub value: f64,
-    /// Natural logarithm of the raw integral, retained even if `value` underflows.
+    /// The natural logarithm of `value`.
     pub log_value: f64,
-    likelihood: Likelihood,
-    prior: Prior,
-    approximate_marginal: Option<MarginalResult>,
-    approximation: bool,
 }
 
 impl Auc {
-    pub(crate) fn new(
-        value: f64,
-        likelihood: Likelihood,
-        prior: Prior,
-        approximate_marginal: Option<MarginalResult>,
-    ) -> Self {
+    pub(crate) fn new(value: f64) -> Self {
         Self {
             value,
             log_value: value.ln(),
-            likelihood,
-            prior,
-            approximation: approximate_marginal.is_some(),
-            approximate_marginal,
         }
     }
-
-    pub fn likelihood(&self) -> Likelihood {
-        self.likelihood
-    }
-
-    pub fn prior(&self) -> Prior {
-        self.prior
-    }
-
-    pub fn approximate_marginal(&self) -> Option<MarginalResult> {
-        self.approximate_marginal
-    }
-
-    pub fn is_approximation(&self) -> bool {
-        self.approximation
-    }
-
 }
 
 impl PartialEq<f64> for Auc {
@@ -182,53 +163,11 @@ impl PartialEq<f64> for Auc {
     }
 }
 
-impl PartialOrd for Auc {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.value.partial_cmp(&other.value)
-    }
-}
-
-impl RelativeEq for Auc {
-    fn default_max_relative() -> Self::Epsilon {
-        f64::EPSILON
-    }
-
-    fn relative_eq(
-        &self,
-        other: &Self,
-        epsilon: Self::Epsilon,
-        max_relative: Self::Epsilon,
-    ) -> bool {
-        self.value.relative_eq(&other.value, epsilon, max_relative)
-    }
-}
-
 impl Div for Auc {
     type Output = f64;
 
     fn div(self, rhs: Self) -> Self::Output {
-        if !self.value.is_normal() || !rhs.value.is_normal() {
-            return (self.log_value - rhs.log_value).exp();
-        }
         self.value / rhs.value
-    }
-}
-
-impl AbsDiffEq for Auc {
-    type Epsilon = f64;
-
-    fn default_epsilon() -> Self::Epsilon {
-        f64::EPSILON
-    }
-
-    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
-        self.value.abs_diff_eq(&other.value, epsilon)
-    }
-}
-
-impl From<Auc> for f64 {
-    fn from(auc: Auc) -> Self {
-        auc.value
     }
 }
 
@@ -245,6 +184,39 @@ impl Sub<f64> for Auc {
 
     fn sub(self, rhs: f64) -> Self::Output {
         self.value - rhs
+    }
+}
+
+impl From<Auc> for f64 {
+    fn from(auc: Auc) -> Self {
+        auc.value
+    }
+}
+
+impl AbsDiffEq for Auc {
+    type Epsilon = f64;
+
+    fn default_epsilon() -> Self::Epsilon {
+        f64::EPSILON
+    }
+
+    fn abs_diff_eq(&self, other: &Self, epsilon: Self::Epsilon) -> bool {
+        self.value.abs_diff_eq(&other.value, epsilon)
+    }
+}
+
+impl RelativeEq for Auc {
+    fn default_max_relative() -> Self::Epsilon {
+        f64::EPSILON
+    }
+
+    fn relative_eq(
+        &self,
+        other: &Self,
+        epsilon: Self::Epsilon,
+        max_relative: Self::Epsilon,
+    ) -> bool {
+        self.value.relative_eq(&other.value, epsilon, max_relative)
     }
 }
 
@@ -348,32 +320,4 @@ pub fn truncated_normalization<E>(
 
 pub trait Family<T> {
     fn family(&self) -> T;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::prelude::*;
-
-    #[test]
-    fn division_uses_both_marginals_not_approximation_bf() {
-        let likelihood = NormalLikelihood::new(0.0, 1.0).into();
-        let prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
-        let approximate = Auc::new(
-            6.0,
-            likelihood,
-            prior,
-            Some(MarginalResult {
-                marginal: 6.0,
-                bf: 99.0,
-            }),
-        );
-        let exact = Auc::new(2.0, likelihood, prior, None);
-        let point = Auc::new(3.0, likelihood, PointPrior::new(1.0).into(), None);
-        assert_eq!(approximate / exact, 3.0);
-        assert_eq!(point / approximate, 0.5);
-        assert_eq!(approximate / point, 2.0);
-        assert_eq!(approximate / approximate, 1.0);
-    }
-
 }
