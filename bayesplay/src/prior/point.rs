@@ -135,11 +135,7 @@ impl Validate<PriorError> for PointPrior {
 impl Function<f64, f64, PriorError> for PointPrior {
     fn function(&self, x: f64) -> Result<f64, PriorError> {
         self.validate()?;
-        if x == self.point {
-            Ok(1.0)
-        } else {
-            Ok(0.0)
-        }
+        if x == self.point { Ok(1.0) } else { Ok(0.0) }
     }
 }
 

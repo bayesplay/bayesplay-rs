@@ -2,11 +2,11 @@
 name = "rmath"
 version = "0.1.0"
 edition = "2024"
-# build = "build.rs"
 
 [dependencies]
-approx_eq = "0.1.8"
-gkquad = {version = "0.0.4", default-features = false, features=["std"]}
+gkquad = { version = "0.0.4", default-features = false, features = ["std"] }
 statrs = "0.16.0"
 thiserror = "2.0.12"
 
+[dev-dependencies]
+approx_eq = "0.1.8"

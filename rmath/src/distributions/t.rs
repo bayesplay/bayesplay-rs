@@ -59,10 +59,10 @@ pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static st
     // (e.g. x and ncp of opposite sign, far tails): pnt() carries ~1e-13 absolute
     // error, which R reports as "full precision may not have been achieved".
     // Below the threshold use a positive-integrand representation instead.
-    if !(u.is_finite() && u > DNT_CANCELLATION_LOG_THRESHOLD) {
-        if let Some(accurate) = dnt_by_integration(x, df, ncp) {
-            return Ok(if give_log { accurate } else { accurate.exp() });
-        }
+    if !(u.is_finite() && u > DNT_CANCELLATION_LOG_THRESHOLD)
+        && let Some(accurate) = dnt_by_integration(x, df, ncp)
+    {
+        return Ok(if give_log { accurate } else { accurate.exp() });
     }
 
     if give_log { Ok(u) } else { Ok(u.exp()) }
@@ -101,7 +101,13 @@ fn dnt_by_integration(x: f64, df: f64, ncp: f64) -> Option<f64> {
     let width = 1.0 / (a + df).sqrt(); // scale of the peak (curvature >= a + df)
     let upper = mode + 40.0 * width;
     let result = integratewrapper(Integrate {
-        f: Some(move |s: f64| if s <= 0.0 { 0.0 } else { (log_integrand(s) - peak).exp() }),
+        f: Some(move |s: f64| {
+            if s <= 0.0 {
+                0.0
+            } else {
+                (log_integrand(s) - peak).exp()
+            }
+        }),
         lower: Some((mode - 40.0 * width).max(0.0)),
         upper: Some(upper),
         points: Some(vec![mode]),
@@ -265,17 +271,21 @@ fn dt(x: f64, df: f64, log_p: bool) -> Result<f64, &'static str> {
 
 fn pt(q: f64, df: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
     let dist = StudentsT::new(0.0, 1.0, df).map_err(|_| "Error creating Student t distribution")?;
-    let sf = dist.sf(q);
-    let cdf = dist.cdf(q);
+    // Only one tail is evaluated per call. In log space the tail that is
+    // close to 1 is taken as ln_1p(-other tail) to avoid cancellation.
     match (lower_tail, log_p) {
-        // Use ln_1p(-sf) instead of cdf.ln() to avoid catastrophic cancellation
-        // when cdf ≈ 1 (large positive q), where cdf = 1 - sf and sf is tiny.
-        (true, true) => Ok(if q > 0.0 { (-sf).ln_1p() } else { cdf.ln() }),
-        (true, false) => Ok(cdf),
-        // Use sf() (survival function) directly instead of 1 - cdf() to avoid
-        // catastrophic cancellation when cdf(q) is very close to 1 (large q).
-        (false, true) => Ok(if q < 0.0 { (-cdf).ln_1p() } else { sf.ln() }),
-        (false, false) => Ok(sf),
+        (true, true) => Ok(if q > 0.0 {
+            (-dist.sf(q)).ln_1p()
+        } else {
+            dist.cdf(q).ln()
+        }),
+        (true, false) => Ok(dist.cdf(q)),
+        (false, true) => Ok(if q < 0.0 {
+            (-dist.cdf(q)).ln_1p()
+        } else {
+            dist.sf(q).ln()
+        }),
+        (false, false) => Ok(dist.sf(q)),
     }
 }
 
@@ -510,7 +520,10 @@ mod tests {
             (2.0, 1.15111e-92),
         ] {
             let got = dnt(-3.2, df, ncp_over_sqrt_n * 80f64.sqrt(), false).unwrap();
-            assert!((got / expected - 1.0).abs() < 1e-5, "ncp={ncp_over_sqrt_n}: {got:e} vs {expected:e}");
+            assert!(
+                (got / expected - 1.0).abs() < 1e-5,
+                "ncp={ncp_over_sqrt_n}: {got:e} vs {expected:e}"
+            );
         }
         // log density decreases monotonically through the former noise floor
         let logs: Vec<f64> = (0..300)
@@ -533,7 +546,10 @@ mod tests {
             (45.0, -6.561_258_410_337),
         ] {
             let got = dnt(30.0, 19.0, ncp, true).unwrap();
-            assert!((got - expected).abs() < 1e-9, "ncp={ncp}: {got} vs {expected}");
+            assert!(
+                (got - expected).abs() < 1e-9,
+                "ncp={ncp}: {got} vs {expected}"
+            );
         }
     }
 
