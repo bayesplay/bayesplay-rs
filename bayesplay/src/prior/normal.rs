@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 
 use super::Normalize;
 use super::PriorError;
-use crate::common::truncated_normalization;
+use super::{is_valid_parameter, validate_range};
 use crate::common::Function;
 use crate::common::Range;
 use crate::common::Validate;
+use crate::common::truncated_normalization;
 ///
 /// A normal distribution prior with customizable parameters.
 ///
@@ -38,7 +39,7 @@ use crate::common::Validate;
 pub struct NormalPrior {
     pub mean: f64,
     pub sd: f64,
-    range: (Option<f64>, Option<f64>),
+    pub range: (Option<f64>, Option<f64>),
 }
 
 /// Implementation of the NormalPrior struct.
@@ -119,13 +120,16 @@ impl Validate<PriorError> for NormalPrior {
     fn validate(&self) -> Result<(), PriorError> {
         let mut errors = Vec::new();
 
-        if self.sd <= 0.0 {
+        if !is_valid_parameter(self.mean, false) {
+            errors.push(PriorError::InvalidLocation(self.mean));
+        }
+
+        if !is_valid_parameter(self.sd, true) {
             errors.push(PriorError::InvalidStandardDeviation(self.sd));
         }
 
-        let (lower, upper) = self.range_or_default();
-        if lower == upper {
-            errors.push(PriorError::InvalidRange);
+        if let Err(e) = validate_range(self.range_or_default()) {
+            errors.push(e);
         }
 
         PriorError::from_errors(errors)
@@ -245,7 +249,7 @@ impl Function<f64, f64, PriorError> for NormalPrior {
         let mean = self.mean;
         let sd = self.sd;
         if self.has_default_range() {
-            return dnorm!(x = mean, mean = x, sd = sd).map_err(PriorError::DistributionError);
+            return dnorm!(x = x, mean = mean, sd = sd).map_err(PriorError::DistributionError);
         }
 
         let (lower, upper) = self.range_or_default();

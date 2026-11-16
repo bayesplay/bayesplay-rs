@@ -142,12 +142,17 @@ impl Validate<LikelihoodError> for NoncentralD2Likelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {
         let mut errors = Vec::new();
 
-        if self.n1 < 1.0 {
+        if !(self.n1 >= 1.0 && self.n1.is_finite()) {
             errors.push(LikelihoodError::InvalidN1(self.n1));
         }
 
-        if self.n2 < 1.0 {
+        if !(self.n2 >= 1.0 && self.n2.is_finite()) {
             errors.push(LikelihoodError::InvalidN2(self.n2));
+        }
+
+        let df = self.n1 + self.n2 - 2.0;
+        if errors.is_empty() && df < 1.0 {
+            errors.push(LikelihoodError::InvalidDF(df));
         }
 
         LikelihoodError::from_errors(errors)

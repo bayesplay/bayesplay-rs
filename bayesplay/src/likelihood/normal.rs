@@ -171,7 +171,7 @@ impl Function<f64, f64, LikelihoodError> for NormalLikelihood {
 /// ```
 impl Validate<LikelihoodError> for NormalLikelihood {
     fn validate(&self) -> Result<(), LikelihoodError> {
-        if self.se <= 0.0 {
+        if !(self.se > 0.0 && self.se.is_finite()) {
             Err(LikelihoodError::InvalidSE(self.se))
         } else {
             Ok(())

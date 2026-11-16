@@ -81,7 +81,7 @@ pub fn safe_dbeta(args: Dbeta) -> Result<f64, &'static str> {
                 .ok_or("argument \"shape2\" is missing, with no default")?,
             args.log.ok_or("Error with log")?,
         ),
-        false => todo!(),
+        false => Err("noncentral beta is not implemented"),
     }
 }
 
@@ -97,6 +97,6 @@ pub fn safe_pbeta(args: Pbeta) -> Result<f64, &'static str> {
             args.lower_tail.ok_or("Error with lower_tail")?,
             args.log_p.ok_or("Error with log_p")?,
         ),
-        false => todo!(),
+        false => Err("noncentral beta is not implemented"),
     }
 }

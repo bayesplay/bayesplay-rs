@@ -144,7 +144,8 @@ impl Validate<LikelihoodError> for NoncentralDLikelihood {
     /// ));
     /// ```
     fn validate(&self) -> Result<(), LikelihoodError> {
-        if self.n < 1.0 {
+        // df = n - 1 must be at least 1.
+        if !(self.n >= 2.0 && self.n.is_finite()) {
             return Err(LikelihoodError::InvalidN(self.n));
         }
         Ok(())

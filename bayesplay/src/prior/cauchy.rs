@@ -5,10 +5,11 @@ use serde::{Deserialize, Serialize};
 
 use super::Normalize;
 use super::PriorError;
-use crate::common::truncated_normalization;
+use super::{is_valid_parameter, validate_range};
 use crate::common::Function;
 use crate::common::Range;
 use crate::common::Validate;
+use crate::common::truncated_normalization;
 
 /// A Cauchy distribution prior with customizable parameters.
 ///
@@ -110,14 +111,21 @@ impl CauchyPrior {
 /// ```
 impl Validate<PriorError> for CauchyPrior {
     fn validate(&self) -> Result<(), PriorError> {
-        if self.scale <= 0.0 {
-            Err(PriorError::InvalidScale(self.scale))?;
+        let mut errors = Vec::new();
+
+        if !is_valid_parameter(self.location, false) {
+            errors.push(PriorError::InvalidLocation(self.location));
         }
 
-        if !self.has_default_range() & (self.range.0 == self.range.1) {
-            Err(PriorError::InvalidRange)?;
+        if !is_valid_parameter(self.scale, true) {
+            errors.push(PriorError::InvalidScale(self.scale));
         }
-        Ok(())
+
+        if let Err(e) = validate_range(self.range_or_default()) {
+            errors.push(e);
+        }
+
+        PriorError::from_errors(errors)
     }
 }
 
