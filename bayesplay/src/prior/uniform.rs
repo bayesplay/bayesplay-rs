@@ -2,10 +2,10 @@ use rmath::dunif;
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
-use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
 
+use super::PriorDensity;
 use super::PriorError;
 use super::validate_range;
 
@@ -103,9 +103,8 @@ impl Range for UniformPrior {
 /// // Outside the interval: density = 0
 /// assert_eq!(uniform.function(3.0).unwrap(), 0.0);
 /// ```
-impl LogFunction<PriorError> for UniformPrior {
-    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        self.validate()?;
+impl PriorDensity for UniformPrior {
+    fn ln_density(&self, x: f64, _ln_normalizer: f64) -> Result<f64, PriorError> {
         dunif!(x = x, min = self.min, max = self.max, log = true)
             .map_err(PriorError::DistributionError)
     }

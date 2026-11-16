@@ -4,11 +4,11 @@ use rmath::{dbeta, pbeta};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
 
 use super::Normalize;
+use super::PriorDensity;
 use super::PriorError;
 
 /// A Beta distribution prior for probability parameters.
@@ -176,10 +176,8 @@ impl Validate<PriorError> for BetaPrior {
 /// let off_mode = beta22.function(0.3).unwrap();
 /// assert!(at_mode > off_mode);
 /// ```
-impl LogFunction<PriorError> for BetaPrior {
-    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        self.validate()?;
-
+impl PriorDensity for BetaPrior {
+    fn ln_density(&self, x: f64, ln_normalizer: f64) -> Result<f64, PriorError> {
         if !(0.0..=1.0).contains(&x) {
             Err(PriorError::InvalidValue(x, 0.0, 1.0))?;
         }
@@ -190,7 +188,7 @@ impl LogFunction<PriorError> for BetaPrior {
         }
         let log_density = dbeta!(x = x, shape1 = self.alpha, shape2 = self.beta, log = true)
             .map_err(PriorError::DistributionError)?;
-        Ok(log_density - self.normalize()?.ln())
+        Ok(log_density - ln_normalizer)
     }
 }
 
