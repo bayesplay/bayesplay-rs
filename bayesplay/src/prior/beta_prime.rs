@@ -1,8 +1,8 @@
 use rmath::{lbeta, pbeta};
 use serde::{Deserialize, Serialize};
 
-use super::{Normalize, PriorError, validate_positive_range};
-use crate::common::{LogFunction, Range, Validate, truncated_normalization};
+use super::{Normalize, PriorDensity, PriorError, validate_positive_range};
+use crate::common::{Range, Validate, truncated_normalization};
 
 /// A symmetric beta-prime prior for a positive ratio.
 ///
@@ -113,9 +113,8 @@ impl Normalize for BetaPrimePrior {
     }
 }
 
-impl LogFunction<PriorError> for BetaPrimePrior {
-    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        self.validate()?;
+impl PriorDensity for BetaPrimePrior {
+    fn ln_density(&self, x: f64, ln_normalizer: f64) -> Result<f64, PriorError> {
         let (lower, upper) = self.range_or_default();
         if !x.is_finite() || x <= 0.0 || !(lower..=upper).contains(&x) {
             return Ok(f64::NEG_INFINITY);
@@ -130,7 +129,7 @@ impl LogFunction<PriorError> for BetaPrimePrior {
         let log_density = -lbeta(self.alpha, self.alpha).map_err(PriorError::DistributionError)?
             + (self.alpha - 1.0) * log_x
             - 2.0 * self.alpha * log_one_plus_x;
-        Ok(log_density - self.normalize()?.ln())
+        Ok(log_density - ln_normalizer)
     }
 }
 

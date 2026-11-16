@@ -4,9 +4,9 @@ use rmath::pt_scaled;
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
+use super::PriorDensity;
 use super::PriorError;
 use super::{is_valid_parameter, validate_range};
-use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
 use crate::common::truncated_ln_normalization;
@@ -159,9 +159,8 @@ impl Validate<PriorError> for StudentTPrior {
 /// let truncated = StudentTPrior::new(0.0, 1.0, 3.0, (Some(-1.0), Some(1.0)));
 /// assert_eq!(truncated.function(5.0).unwrap(), 0.0);
 /// ```
-impl LogFunction<PriorError> for StudentTPrior {
-    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        self.validate()?;
+impl PriorDensity for StudentTPrior {
+    fn ln_density(&self, x: f64, ln_normalizer: f64) -> Result<f64, PriorError> {
         let log_density = dt_scaled!(
             x = x,
             mean = self.mean,
@@ -170,14 +169,11 @@ impl LogFunction<PriorError> for StudentTPrior {
             log = true
         )
         .map_err(PriorError::DistributionError)?;
-        if self.has_default_range() {
-            return Ok(log_density);
-        }
         let (lower, upper) = self.range_or_default();
         if !(lower..=upper).contains(&x) {
             return Ok(f64::NEG_INFINITY);
         }
-        Ok(log_density - self.ln_normalize()?)
+        Ok(log_density - ln_normalizer)
     }
 }
 

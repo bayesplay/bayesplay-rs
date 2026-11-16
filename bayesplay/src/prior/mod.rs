@@ -325,6 +325,24 @@ pub enum Prior {
     BetaPrime(BetaPrimePrior),
 }
 
+/// A prior's log density given precomputed constants.
+///
+/// Each prior implements this; [`LogFunction`] follows from it, validating
+/// and normalizing on every call. Integration instead uses
+/// [`Prior::ln_kernel`], which does both once.
+pub(crate) trait PriorDensity {
+    /// The log density at `x`, assuming the parameters are valid and
+    /// `ln_normalizer` is [`Normalize::ln_normalize`].
+    fn ln_density(&self, x: f64, ln_normalizer: f64) -> Result<f64, PriorError>;
+}
+
+impl<T: PriorDensity + Validate<PriorError> + Normalize> LogFunction<PriorError> for T {
+    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
+        self.validate()?;
+        self.ln_density(x, self.ln_normalize()?)
+    }
+}
+
 /// Evaluates `$body` with `$inner` bound to the distribution inside a
 /// [`Prior`], whichever variant it is. Adding a variant makes every use of this
 /// a compile error until it is listed here.
@@ -436,6 +454,16 @@ impl Prior {
         }
     }
 
+    /// The log density as a closure, with validation and the normalizing
+    /// constant done once up front rather than on every evaluation.
+    pub(crate) fn ln_kernel(
+        &self,
+    ) -> Result<impl Fn(f64) -> Result<f64, PriorError> + '_, PriorError> {
+        self.validate()?;
+        let ln_normalizer = self.ln_normalize()?;
+        Ok(move |x| on_prior!(self, p => p.ln_density(x, ln_normalizer)))
+    }
+
     /// The natural logarithm of [`Integrate::integrate`] (the prior mass in
     /// `[lb, ub]`).
     pub fn ln_integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
@@ -448,7 +476,7 @@ impl Prior {
                 f64::NEG_INFINITY
             });
         }
-        ln_integrate_kernel(|x| self.ln_function(x), lb, ub, self.peak_hint(), None)
+        ln_integrate_kernel(self.ln_kernel()?, lb, ub, self.peak_hint(), None)
     }
 }
 

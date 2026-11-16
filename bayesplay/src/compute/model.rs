@@ -197,8 +197,10 @@ impl Model {
             prior_peak.filter(|&(_, width)| width < likelihood_peak.1),
         ];
         let landmarks = prior_peak.map(|(centre, _)| centre);
+        let ln_prior = self.prior.ln_kernel()?;
+        let likelihood = self.likelihood;
         ln_integrate_kernel(
-            |x| self.ln_function(x),
+            |x| -> Result<f64, IntegralError> { Ok(ln_prior(x)? + likelihood.ln_function(x)?) },
             lb,
             ub,
             windows.into_iter().flatten(),

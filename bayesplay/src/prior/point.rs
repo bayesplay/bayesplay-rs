@@ -1,6 +1,6 @@
 use super::Normalize;
+use super::PriorDensity;
 use super::PriorError;
-use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
 use serde::{Deserialize, Serialize};
@@ -132,10 +132,9 @@ impl Validate<PriorError> for PointPrior {
 /// assert_eq!(prior.function(0.5).unwrap(), 0.0);
 /// assert_eq!(prior.function(-1.0).unwrap(), 0.0);
 /// ```
-impl LogFunction<PriorError> for PointPrior {
+impl PriorDensity for PointPrior {
     /// A point mass "density": 0 (i.e. ln 1) at the point, -inf elsewhere.
-    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        self.validate()?;
+    fn ln_density(&self, x: f64, _ln_normalizer: f64) -> Result<f64, PriorError> {
         Ok(if x == self.point {
             0.0
         } else {

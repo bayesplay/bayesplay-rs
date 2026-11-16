@@ -5,9 +5,9 @@ use rmath::pnorm;
 use serde::{Deserialize, Serialize};
 
 use super::Normalize;
+use super::PriorDensity;
 use super::PriorError;
 use super::{is_valid_parameter, validate_range};
-use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
 use crate::common::truncated_ln_normalization;
@@ -247,19 +247,15 @@ impl Normalize for NormalPrior {
 ///     assert!((density - unnormalized/normalization).abs() < 1e-10);
 /// }
 /// ```
-impl LogFunction<PriorError> for NormalPrior {
-    fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        self.validate()?;
+impl PriorDensity for NormalPrior {
+    fn ln_density(&self, x: f64, ln_normalizer: f64) -> Result<f64, PriorError> {
         let log_density = dnorm!(x = x, mean = self.mean, sd = self.sd, log = true)
             .map_err(PriorError::DistributionError)?;
-        if self.has_default_range() {
-            return Ok(log_density);
-        }
         let (lower, upper) = self.range_or_default();
         if !(lower..=upper).contains(&x) {
             return Ok(f64::NEG_INFINITY);
         }
-        Ok(log_density - self.ln_normalize()?)
+        Ok(log_density - ln_normalizer)
     }
 }
 
