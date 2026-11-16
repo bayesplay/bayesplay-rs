@@ -32,6 +32,14 @@ pub fn dnt(x: f64, df: f64, ncp: f64, give_log: bool) -> Result<f64, &'static st
         return dnorm(x, ncp, 1., give_log);
     }
 
+    // Where pnt() falls back to its normal approximation, the pnt() difference
+    // below is not a density at all (e.g. log dnt(30, 19, 45) is off by 0.27).
+    if pnt_uses_normal_approximation(df, ncp)
+        && let Some(accurate) = dnt_by_integration(x, df, ncp)
+    {
+        return Ok(if give_log { accurate } else { accurate.exp() });
+    }
+
     let u = match x.abs() > (df * DBL_EPSILON).sqrt() {
         true => {
             df.ln() - (x.abs()).ln()
@@ -107,6 +115,12 @@ fn dnt_by_integration(x: f64, df: f64, ncp: f64) -> Option<f64> {
     (result.value > 0.0 && result.value.is_finite()).then(|| peak + result.value.ln())
 }
 
+/// pnt() abandons its series for a normal approximation when df is huge or the
+/// Poisson weights exp(-ncp^2/2) would underflow (|ncp| > ~37.6).
+fn pnt_uses_normal_approximation(df: f64, ncp: f64) -> bool {
+    df > 4e5 || ncp * ncp > -2.0 * LN_2 * DBL_MIN_EXP
+}
+
 pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f64, &'static str> {
     let itrmax = 1000;
     let errmax = 1e-12;
@@ -141,7 +155,7 @@ pub fn pnt(q: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> Result<f
         return Ok(r_dt_0(lower_tail, log_p));
     }
 
-    if df > 4e5 || del * del > 2.0 * LN_2 * -1.0 * DBL_MIN_EXP {
+    if pnt_uses_normal_approximation(df, del) {
         let s = 1.0 / (4.0 * df);
         return pnorm(
             tt * (1.0 - s),
@@ -503,6 +517,24 @@ mod tests {
             .map(|i| dnt(-3.2, df, i as f64 * 0.01 * 80f64.sqrt(), true).unwrap())
             .collect();
         assert!(logs.windows(2).all(|w| w[1] <= w[0] + 1e-9));
+    }
+
+    #[test]
+    fn noncentral_density_is_accurate_across_pnt_normal_approximation_seam() {
+        // log dt(30, 19, ncp) from the positive mixture representation in R
+        // (integrate(), rel.tol = 1e-13). pnt() switches to a normal
+        // approximation above ncp ~ 37.6, which the density must not inherit.
+        for (ncp, expected) in [
+            (5.0, -2.322_098_698_483e1),
+            (30.0, -2.530_805_012_800),
+            (35.0, -3.011_343_477_453),
+            (38.0, -3.733_746_820_726),
+            (40.0, -4.383_316_622_106),
+            (45.0, -6.561_258_410_337),
+        ] {
+            let got = dnt(30.0, 19.0, ncp, true).unwrap();
+            assert!((got - expected).abs() < 1e-9, "ncp={ncp}: {got} vs {expected}");
+        }
     }
 
     #[test]
