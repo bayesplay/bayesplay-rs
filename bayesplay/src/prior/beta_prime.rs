@@ -139,8 +139,9 @@ mod tests {
     use approx::assert_relative_eq;
 
     use super::*;
+    use crate::common::Family;
     use crate::common::Function;
-    use crate::prior::{Prior, PriorFamily, TypeOf};
+    use crate::prior::{Prior, PriorFamily};
 
     #[test]
     fn known_densities_and_dispatch() {
@@ -156,7 +157,7 @@ mod tests {
             epsilon = 1e-14
         );
         let erased: Prior = prior.into();
-        assert_eq!(erased.type_of(), PriorFamily::BetaPrime);
+        assert_eq!(erased.family(), PriorFamily::BetaPrime);
         assert_relative_eq!(
             erased.function(1.0).unwrap(),
             1.0 / (2.0 * std::f64::consts::PI),

@@ -52,7 +52,6 @@
 //! let model: Model = likelihood * prior;
 //! ```
 
-use enum_dispatch::enum_dispatch;
 use thiserror::Error;
 
 pub mod beta;
@@ -70,6 +69,7 @@ use crate::common::Integrate;
 use crate::common::LogFunction;
 use crate::common::Range;
 use crate::common::Validate;
+use crate::common::impl_from_variants;
 use crate::compute::model::{IntegralError, ln_integrate_kernel, requested_bounds};
 
 pub use beta::BetaPrior;
@@ -187,10 +187,10 @@ pub(crate) fn validate_positive_range(range: (Option<f64>, Option<f64>)) -> Resu
 /// use bayesplay::prelude::*;
 ///
 /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
-/// assert_eq!(prior.type_of(), PriorFamily::Normal);
+/// assert_eq!(prior.family(), PriorFamily::Normal);
 ///
 /// let prior: Prior = PointPrior::new(0.0).into();
-/// assert_eq!(prior.type_of(), PriorFamily::Point);
+/// assert_eq!(prior.family(), PriorFamily::Point);
 /// assert!(prior.is_point());
 /// ```
 #[derive(PartialEq, Debug, Serialize, Clone, Copy)]
@@ -231,7 +231,6 @@ pub enum PriorFamily {
 /// let norm = truncated.normalize().unwrap();
 /// assert!((norm - 0.6827).abs() < 0.01); // ~68% of mass is within ±1 SD
 /// ```
-#[enum_dispatch]
 pub trait Normalize {
     /// Computes the normalization constant for the distribution.
     ///
@@ -246,171 +245,6 @@ pub trait Normalize {
     }
 }
 
-/// Concrete trait for prior function evaluation (used by enum_dispatch)
-#[enum_dispatch]
-pub trait PriorFn {
-    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError>;
-}
-
-/// Concrete trait for prior validation (used by enum_dispatch)
-#[enum_dispatch]
-pub trait PriorValidate {
-    fn prior_validate(&self) -> Result<(), PriorError>;
-}
-
-/// Concrete trait for prior range (used by enum_dispatch)
-#[enum_dispatch]
-pub trait PriorRange {
-    fn prior_range(&self) -> (Option<f64>, Option<f64>);
-    fn prior_default_range(&self) -> (f64, f64);
-}
-
-// Implement the concrete traits for each prior type by delegating to the generic traits
-
-impl PriorFn for NormalPrior {
-    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        LogFunction::ln_function(self, x)
-    }
-}
-
-impl PriorFn for PointPrior {
-    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        LogFunction::ln_function(self, x)
-    }
-}
-
-impl PriorFn for CauchyPrior {
-    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        LogFunction::ln_function(self, x)
-    }
-}
-
-impl PriorFn for UniformPrior {
-    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        LogFunction::ln_function(self, x)
-    }
-}
-
-impl PriorFn for StudentTPrior {
-    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        LogFunction::ln_function(self, x)
-    }
-}
-
-impl PriorFn for BetaPrior {
-    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        LogFunction::ln_function(self, x)
-    }
-}
-
-impl PriorFn for BetaPrimePrior {
-    fn prior_ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        LogFunction::ln_function(self, x)
-    }
-}
-impl PriorValidate for NormalPrior {
-    fn prior_validate(&self) -> Result<(), PriorError> {
-        Validate::validate(self)
-    }
-}
-
-impl PriorValidate for PointPrior {
-    fn prior_validate(&self) -> Result<(), PriorError> {
-        Validate::validate(self)
-    }
-}
-
-impl PriorValidate for CauchyPrior {
-    fn prior_validate(&self) -> Result<(), PriorError> {
-        Validate::validate(self)
-    }
-}
-
-impl PriorValidate for UniformPrior {
-    fn prior_validate(&self) -> Result<(), PriorError> {
-        Validate::validate(self)
-    }
-}
-
-impl PriorValidate for StudentTPrior {
-    fn prior_validate(&self) -> Result<(), PriorError> {
-        Validate::validate(self)
-    }
-}
-
-impl PriorValidate for BetaPrior {
-    fn prior_validate(&self) -> Result<(), PriorError> {
-        Validate::validate(self)
-    }
-}
-
-impl PriorValidate for BetaPrimePrior {
-    fn prior_validate(&self) -> Result<(), PriorError> {
-        Validate::validate(self)
-    }
-}
-impl PriorRange for NormalPrior {
-    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
-        Range::range(self)
-    }
-    fn prior_default_range(&self) -> (f64, f64) {
-        Range::default_range(self)
-    }
-}
-
-impl PriorRange for PointPrior {
-    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
-        Range::range(self)
-    }
-    fn prior_default_range(&self) -> (f64, f64) {
-        Range::default_range(self)
-    }
-}
-
-impl PriorRange for CauchyPrior {
-    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
-        Range::range(self)
-    }
-    fn prior_default_range(&self) -> (f64, f64) {
-        Range::default_range(self)
-    }
-}
-
-impl PriorRange for UniformPrior {
-    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
-        Range::range(self)
-    }
-    fn prior_default_range(&self) -> (f64, f64) {
-        Range::default_range(self)
-    }
-}
-
-impl PriorRange for StudentTPrior {
-    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
-        Range::range(self)
-    }
-    fn prior_default_range(&self) -> (f64, f64) {
-        Range::default_range(self)
-    }
-}
-
-impl PriorRange for BetaPrior {
-    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
-        Range::range(self)
-    }
-    fn prior_default_range(&self) -> (f64, f64) {
-        Range::default_range(self)
-    }
-}
-
-impl PriorRange for BetaPrimePrior {
-    fn prior_range(&self) -> (Option<f64>, Option<f64>) {
-        Range::range(self)
-    }
-    fn prior_default_range(&self) -> (f64, f64) {
-        Range::default_range(self)
-    }
-}
 /// A prior distribution for Bayesian inference.
 ///
 /// This enum wraps all available prior types, allowing them to be used
@@ -464,16 +298,15 @@ impl PriorRange for BetaPrimePrior {
 ///
 /// # Type Identification
 ///
-/// Use the [`TypeOf`] trait to identify the type of a prior at runtime:
+/// Use the [`Family`] trait to identify the type of a prior at runtime:
 ///
 /// ```rust
 /// use bayesplay::prelude::*;
 ///
 /// let prior: Prior = PointPrior::new(0.0).into();
 /// assert!(prior.is_point());
-/// assert_eq!(prior.type_of(), PriorFamily::Point);
+/// assert_eq!(prior.family(), PriorFamily::Point);
 /// ```
-#[enum_dispatch(Normalize, PriorFn, PriorValidate, PriorRange)]
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum Prior {
     /// Normal (Gaussian) prior distribution.
@@ -492,71 +325,79 @@ pub enum Prior {
     BetaPrime(BetaPrimePrior),
 }
 
-// Note: From implementations are generated automatically by enum_dispatch
+/// Evaluates `$body` with `$inner` bound to the distribution inside a
+/// [`Prior`], whichever variant it is. Adding a variant makes every use of this
+/// a compile error until it is listed here.
+macro_rules! on_prior {
+    ($prior:expr, $inner:ident => $body:expr) => {
+        match $prior {
+            Prior::Normal($inner) => $body,
+            Prior::Point($inner) => $body,
+            Prior::Cauchy($inner) => $body,
+            Prior::Uniform($inner) => $body,
+            Prior::StudentT($inner) => $body,
+            Prior::Beta($inner) => $body,
+            Prior::BetaPrime($inner) => $body,
+        }
+    };
+}
 
-// Implement the generic Function trait for Prior using enum_dispatch
+impl_from_variants!(Prior {
+    Normal(NormalPrior),
+    Point(PointPrior),
+    Cauchy(CauchyPrior),
+    Uniform(UniformPrior),
+    StudentT(StudentTPrior),
+    Beta(BetaPrior),
+    BetaPrime(BetaPrimePrior),
+});
+
 impl LogFunction<PriorError> for Prior {
     fn ln_function(&self, x: f64) -> Result<f64, PriorError> {
-        self.prior_ln_function(x)
+        on_prior!(self, p => p.ln_function(x))
     }
 }
 
 impl Function<&[f64], Vec<Option<f64>>, PriorError> for Prior {
     fn function(&self, x: &[f64]) -> Result<Vec<Option<f64>>, PriorError> {
-        Ok(x.iter()
-            .map(|x| self.function(*x).ok())
-            .collect::<Vec<Option<_>>>())
+        Ok(x.iter().map(|&x| self.function(x).ok()).collect())
     }
 }
 
-// Implement the generic Validate trait for Prior using enum_dispatch
 impl Validate<PriorError> for Prior {
     fn validate(&self) -> Result<(), PriorError> {
-        self.prior_validate()
+        on_prior!(self, p => p.validate())
     }
 }
 
-// Implement the Range trait for Prior using enum_dispatch
 impl Range for Prior {
     fn range(&self) -> (Option<f64>, Option<f64>) {
-        self.prior_range()
+        on_prior!(self, p => p.range())
     }
     fn default_range(&self) -> (f64, f64) {
-        self.prior_default_range()
+        on_prior!(self, p => p.default_range())
     }
 }
 
-/// Trait for runtime type identification of prior distributions.
-///
-/// This trait allows querying the type of a prior at runtime, which is useful
-/// for special handling of certain prior types (e.g., point priors).
-///
-/// # Examples
-///
-/// ```rust
-/// use bayesplay::prelude::*;
-///
-/// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
-/// assert_eq!(prior.type_of(), PriorFamily::Normal);
-/// assert!(!prior.is_point());
-///
-/// let point: Prior = PointPrior::new(0.0).into();
-/// assert_eq!(point.type_of(), PriorFamily::Point);
-/// assert!(point.is_point());
-/// ```
-pub trait TypeOf {
-    /// Returns the family (type) of this prior distribution.
-    fn type_of(&self) -> PriorFamily;
-
-    /// Returns true if this is a point prior (Dirac delta).
-    ///
-    /// Point priors require special handling during integration since they
-    /// represent a single value rather than a continuous distribution.
-    fn is_point(&self) -> bool;
+impl Normalize for Prior {
+    fn normalize(&self) -> Result<f64, PriorError> {
+        on_prior!(self, p => p.normalize())
+    }
+    fn ln_normalize(&self) -> Result<f64, PriorError> {
+        on_prior!(self, p => p.ln_normalize())
+    }
 }
 
-impl TypeOf for Prior {
-    fn type_of(&self) -> PriorFamily {
+impl Family<PriorFamily> for Prior {
+    /// The prior's family.
+    ///
+    /// ```rust
+    /// use bayesplay::prelude::*;
+    ///
+    /// let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
+    /// assert_eq!(prior.family(), PriorFamily::Normal);
+    /// ```
+    fn family(&self) -> PriorFamily {
         match self {
             Prior::Normal(_) => PriorFamily::Normal,
             Prior::Point(_) => PriorFamily::Point,
@@ -567,13 +408,22 @@ impl TypeOf for Prior {
             Prior::BetaPrime(_) => PriorFamily::BetaPrime,
         }
     }
-
-    fn is_point(&self) -> bool {
-        matches!(self, Prior::Point(_))
-    }
 }
 
 impl Prior {
+    /// Returns true if this is a point prior (a point mass), which is
+    /// integrated by evaluation rather than quadrature.
+    ///
+    /// ```rust
+    /// use bayesplay::prelude::*;
+    ///
+    /// assert!(Prior::from(PointPrior::new(0.0)).is_point());
+    /// assert!(!Prior::from(NormalPrior::new(0.0, 1.0, (None, None))).is_point());
+    /// ```
+    pub fn is_point(&self) -> bool {
+        matches!(self, Prior::Point(_))
+    }
+
     /// The location and scale of the prior's peak, as `(centre, width)`, for
     /// families whose peak can be narrow relative to their support. Used to
     /// place integration windows.
@@ -585,9 +435,7 @@ impl Prior {
             Prior::Point(_) | Prior::Uniform(_) | Prior::Beta(_) | Prior::BetaPrime(_) => None,
         }
     }
-}
 
-impl Prior {
     /// The natural logarithm of [`Integrate::integrate`] (the prior mass in
     /// `[lb, ub]`).
     pub fn ln_integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
@@ -611,12 +459,6 @@ impl Integrate<IntegralError, PriorError> for Prior {
 
     fn integrate(&self, lb: Option<f64>, ub: Option<f64>) -> Result<f64, IntegralError> {
         Ok(self.ln_integrate(lb, ub)?.exp())
-    }
-}
-
-impl Family<PriorFamily> for Prior {
-    fn family(&self) -> PriorFamily {
-        self.type_of()
     }
 }
 

@@ -392,6 +392,22 @@ fn ln_one_minus_exp(x: f64) -> f64 {
     }
 }
 
+/// Implements `From<Inner>` for each `Variant(Inner)` of a wrapper enum.
+macro_rules! impl_from_variants {
+    ($enum:ident { $($variant:ident($inner:ty)),* $(,)? }) => {
+        $(
+            impl From<$inner> for $enum {
+                fn from(inner: $inner) -> Self {
+                    $enum::$variant(inner)
+                }
+            }
+        )*
+    };
+}
+pub(crate) use impl_from_variants;
+
+/// Identifies which family a [`Prior`](crate::prelude::Prior) or
+/// [`Likelihood`](crate::prelude::Likelihood) belongs to.
 pub trait Family<T> {
     fn family(&self) -> T;
 }

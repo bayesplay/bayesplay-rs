@@ -914,7 +914,7 @@ mod extended_validation_tests {
 
 #[cfg(test)]
 mod type_of_tests {
-    //! Tests for PriorFamily identification via TypeOf trait.
+    //! Tests for PriorFamily identification via the Family trait.
     //!
     //! Verifies that each prior type correctly reports its family
     //! and that is_point() returns true only for PointPrior.
@@ -925,37 +925,37 @@ mod type_of_tests {
     #[test]
     fn test_normal_type_of() {
         let prior: Prior = NormalPrior::new(0.0, 1.0, (None, None)).into();
-        assert_eq!(prior.type_of(), PriorFamily::Normal);
+        assert_eq!(prior.family(), PriorFamily::Normal);
     }
 
     #[test]
     fn test_cauchy_type_of() {
         let prior: Prior = CauchyPrior::new(0.0, 1.0, (None, None)).into();
-        assert_eq!(prior.type_of(), PriorFamily::Cauchy);
+        assert_eq!(prior.family(), PriorFamily::Cauchy);
     }
 
     #[test]
     fn test_student_t_type_of() {
         let prior: Prior = StudentTPrior::new(0.0, 1.0, 3.0, (None, None)).into();
-        assert_eq!(prior.type_of(), PriorFamily::StudentT);
+        assert_eq!(prior.family(), PriorFamily::StudentT);
     }
 
     #[test]
     fn test_uniform_type_of() {
         let prior: Prior = UniformPrior::new(0.0, 1.0).into();
-        assert_eq!(prior.type_of(), PriorFamily::Uniform);
+        assert_eq!(prior.family(), PriorFamily::Uniform);
     }
 
     #[test]
     fn test_beta_type_of() {
         let prior: Prior = BetaPrior::new(1.0, 1.0, (None, None)).into();
-        assert_eq!(prior.type_of(), PriorFamily::Beta);
+        assert_eq!(prior.family(), PriorFamily::Beta);
     }
 
     #[test]
     fn test_point_type_of() {
         let prior: Prior = PointPrior::new(0.0).into();
-        assert_eq!(prior.type_of(), PriorFamily::Point);
+        assert_eq!(prior.family(), PriorFamily::Point);
     }
 
     #[test]

@@ -136,7 +136,6 @@ pub mod prelude {
     pub use crate::prior::PriorError;
     pub use crate::prior::PriorFamily;
     pub use crate::prior::PriorResult;
-    pub use crate::prior::TypeOf;
 
     // Specific prior
     pub use crate::prior::BetaPrimePrior;
